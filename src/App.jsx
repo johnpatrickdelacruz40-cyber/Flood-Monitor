@@ -46,34 +46,57 @@ mqttClient.on('message', (topic, message) => {
 return () => mqttClient.end();
 }, []);
 
-const addSchedule = () => {
-if (!pillName) return;
-const newSchedule = {
-id: Date.now(),
-slot: slot,
-pillName: pillName,
-time: time,
-side: side
+const format12Hour = (time24) => {
+let parts = time24.split(':');
+let hours = parseInt(parts[0], 10);
+let minutes = parts[1];
+let ampm = hours >= 12 ? 'PM' : 'AM';
+hours = hours % 12;
+hours = hours ? hours : 12;
+let strHours = hours < 10 ? '0' + hours : hours;
+return strHours + ':' + minutes + ' ' + ampm;
 };
-setSchedules([...schedules, newSchedule]);
+
+const syncToMachine = (scheduleData) => {
+if (client) {
+const payload = JSON.stringify({
+command: "update_schedule",
+time: scheduleData.time + ":00",
+slot: scheduleData.slot,
+pillName: scheduleData.pillName,
+side: scheduleData.side
+});
+client.publish('cozy/dispenser/commands', payload);
+}
+};
+
+const addSchedule = () => {
+if (!pillName || pillName.trim() === "") return;
+
+const newSchedule = {
+  id: Date.now(),
+  slot: slot,
+  pillName: pillName,
+  time: time,
+  side: side
+};
+
+const updatedList = [...schedules, newSchedule].sort((a, b) => a.time.localeCompare(b.time));
+setSchedules(updatedList);
+syncToMachine(newSchedule);
 setPillName("");
+};
+
+const editSchedule = (scheduleToEdit) => {
+setSlot(scheduleToEdit.slot);
+setPillName(scheduleToEdit.pillName);
+setTime(scheduleToEdit.time);
+setSide(scheduleToEdit.side);
+deleteSchedule(scheduleToEdit.id);
 };
 
 const deleteSchedule = (id) => {
 setSchedules(schedules.filter(s => s.id !== id));
-};
-
-const syncToMachine = (schedule) => {
-if (client) {
-const payload = JSON.stringify({
-command: "update_schedule",
-time: schedule.time + ":00",
-slot: schedule.slot,
-pillName: schedule.pillName,
-side: schedule.side
-});
-client.publish('cozy/dispenser/commands', payload);
-}
 };
 
 const triggerOverride = () => {
@@ -116,7 +139,7 @@ return (
       </select>
 
       <button onClick={addSchedule} style={{ backgroundColor: '#8BA888', color: '#FFFFFF', padding: '16px', borderRadius: '16px', fontWeight: 'bold', border: 'none', cursor: 'pointer' }}>
-        Save to List
+        Save and Sync to Hardware
       </button>
     </div>
   </div>
@@ -130,10 +153,10 @@ return (
       <div key={s.id} style={{ backgroundColor: '#F5F0EA', padding: '16px', borderRadius: '16px', marginBottom: '12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <div>
           <p style={{ fontWeight: 'bold', margin: '0 0 4px 0' }}>{s.pillName}</p>
-          <p style={{ fontSize: '12px', color: '#A89F91', margin: '0' }}>{s.slot} at {s.time}</p>
+          <p style={{ fontSize: '12px', color: '#A89F91', margin: '0' }}>{s.slot} at {format12Hour(s.time)}</p>
         </div>
         <div style={{ display: 'flex', gap: '8px' }}>
-          <button onClick={() => syncToMachine(s)} style={{ backgroundColor: '#8BA888', color: '#FFFFFF', padding: '8px 16px', borderRadius: '8px', border: 'none', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold' }}>Sync Next</button>
+          <button onClick={() => editSchedule(s)} style={{ backgroundColor: '#8BA888', color: '#FFFFFF', padding: '8px 16px', borderRadius: '8px', border: 'none', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold' }}>Edit</button>
           <button onClick={() => deleteSchedule(s.id)} style={{ backgroundColor: '#D4A373', color: '#FFFFFF', padding: '8px 16px', borderRadius: '8px', border: 'none', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold' }}>Del</button>
         </div>
       </div>
