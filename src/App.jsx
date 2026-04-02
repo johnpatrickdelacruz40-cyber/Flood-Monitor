@@ -6,11 +6,22 @@ const [client, setClient] = useState(null);
 const [connectionState, setConnectionState] = useState("Connecting to Cloud...");
 const [machineStatus, setMachineStatus] = useState("Standby");
 
-const [schedules, setSchedules] = useState([]);
+const [schedules, setSchedules] = useState(() => {
+const saved = localStorage.getItem("medSchedules");
+if (saved) {
+return JSON.parse(saved);
+}
+return [];
+});
+
 const [slot, setSlot] = useState("Morning Meds");
 const [pillName, setPillName] = useState("");
 const [time, setTime] = useState("08:00");
 const [side, setSide] = useState("left");
+
+useEffect(() => {
+localStorage.setItem("medSchedules", JSON.stringify(schedules));
+}, [schedules]);
 
 useEffect(() => {
 const mqttClient = mqtt.connect('wss://broker.emqx.io:8084/mqtt');
@@ -130,3 +141,5 @@ return (
   </div>
 
 </div>
+);
+}
