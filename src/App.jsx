@@ -38,11 +38,19 @@ const removePastDose = () => {
 setSchedules(prev => {
 const now = new Date();
 const currentMinutes = now.getHours() * 60 + now.getMinutes();
-return prev.filter(s => {
-const [h, m] = s.time.split(':');
-const schedMinutes = parseInt(h, 10) * 60 + parseInt(m, 10);
-return Math.abs(currentMinutes - schedMinutes) > 5;
+const matchingIndex = prev.findIndex(s => {
+const parts = s.time.split(':');
+const schedMinutes = parseInt(parts[0], 10) * 60 + parseInt(parts[1], 10);
+const diff = Math.abs(currentMinutes - schedMinutes);
+return diff <= 5;
 });
+
+  if (matchingIndex !== -1) {
+    const updated = [...prev];
+    updated.splice(matchingIndex, 1);
+    return updated;
+  }
+  return prev;
 });
 };
 
@@ -87,8 +95,9 @@ setHistory(prev => [newLog, ...prev].slice(0, 10));
 };
 
 const format12Hour = (time24) => {
-const [hours, minutes] = time24.split(':');
-const h = parseInt(hours, 10);
+const parts = time24.split(':');
+const h = parseInt(parts[0], 10);
+const minutes = parts[1];
 const ampm = h >= 12 ? 'PM' : 'AM';
 const formattedHours = h % 12 || 12;
 return formattedHours + ':' + minutes + ' ' + ampm;
@@ -101,10 +110,10 @@ const currentMinutes = now.getHours() * 60 + now.getMinutes();
 
 const sorted = [...schedules].sort((a, b) => a.time.localeCompare(b.time));
 
-for (let s of sorted) {
-  const [h, m] = s.time.split(':');
-  if (parseInt(h, 10) * 60 + parseInt(m, 10) >= currentMinutes) {
-    return s;
+for (let i = 0; i < sorted.length; i++) {
+  const parts = sorted[i].time.split(':');
+  if (parseInt(parts[0], 10) * 60 + parseInt(parts[1], 10) >= currentMinutes) {
+    return sorted[i];
   }
 }
 return sorted[0];
@@ -113,7 +122,8 @@ return sorted[0];
 const nextDose = getNextDose();
 
 useEffect(() => {
-if (client && nextDose) {
+if (client) {
+if (nextDose) {
 const med = inventory.find(m => m.id === nextDose.medId);
 if (med) {
 const payload = JSON.stringify({
@@ -125,12 +135,23 @@ side: med.side
 });
 client.publish('cozy/dispenser/commands', payload);
 }
+} else {
+const payload = JSON.stringify({
+command: "update_schedule",
+time: "00:00:00",
+slot: "STANDBY",
+pillName: "No Meds Set",
+side: "left"
+});
+client.publish('cozy/dispenser/commands', payload);
+}
 }
 }, [schedules, client, inventory]);
 
 const addToCabinet = () => {
 if (!newMed.name) return showToast("Medicine name required", "error");
-setInventory([...inventory, { ...newMed, id: Date.now() }]);
+const newItem = { name: newMed.name, color: newMed.color, side: newMed.side, id: Date.now() };
+setInventory([...inventory, newItem]);
 setNewMed({ name: '', color: PILL_COLORS[0], side: 'left' });
 showToast("Added to Cabinet", "success");
 };
