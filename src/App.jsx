@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import mqtt from 'mqtt';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Pill, Clock, LayoutDashboard, History, Bell, Plus, Trash2, CheckCircle2, AlertCircle } from 'lucide-react';
+import { Pill, Clock, LayoutDashboard, History, Bell, Plus, Trash2, CheckCircle2, AlertCircle, ChevronDown } from 'lucide-react';
 
 const PILL_COLORS = [
 { name: 'Sage', bg: 'bg-[#E3EFE0]', text: 'text-[#4A6741]' },
@@ -242,27 +242,30 @@ return (
         <div className="bg-white p-6 rounded-[2rem] shadow-sm border-2 border-[#E8DFD5] space-y-4">
           <input 
             placeholder="Medicine Name (e.g. Vitamin C)" value={newMed.name} onChange={e => setNewMed({...newMed, name: e.target.value})}
-            className="w-full p-4 bg-[#F5F0EA] rounded-xl outline-none focus:ring-2 focus:ring-[#8BA888] font-medium"
+            className="w-full p-4 bg-[#F5F0EA] rounded-xl outline-none border-2 border-transparent focus:border-[#8BA888] hover:border-[#E8DFD5] transition-colors font-medium cursor-pointer"
           />
           <div className="grid grid-cols-2 gap-4">
-            <select 
-              value={newMed.side} onChange={e => setNewMed({...newMed, side: e.target.value})}
-              className="w-full p-4 bg-[#F5F0EA] rounded-xl outline-none font-medium appearance-none"
-            >
-              <option value="left">Compartment A</option>
-              <option value="right">Compartment B</option>
-            </select>
+            <div className="relative">
+              <select 
+                value={newMed.side} onChange={e => setNewMed({...newMed, side: e.target.value})}
+                className="w-full p-4 bg-[#F5F0EA] rounded-xl outline-none border-2 border-transparent focus:border-[#8BA888] hover:border-[#E8DFD5] transition-colors font-medium appearance-none cursor-pointer"
+              >
+                <option value="left">Compartment A</option>
+                <option value="right">Compartment B</option>
+              </select>
+              <ChevronDown className="absolute right-4 top-1/2 transform -translate-y-1/2 text-[#A89F91] pointer-events-none" size={20} />
+            </div>
             
-            <div className="flex items-center gap-2 overflow-x-auto p-2 bg-[#F5F0EA] rounded-xl">
+            <div className="flex items-center gap-2 overflow-x-auto p-2 bg-[#F5F0EA] rounded-xl border-2 border-transparent">
               {PILL_COLORS.map(color => (
                 <button 
                   key={color.name} onClick={() => setNewMed({...newMed, color})}
-                  className={"w-10 h-10 min-w-[40px] rounded-full " + color.bg + " border-2 transition-all " + (newMed.color.name === color.name ? 'border-[#5C4A3D]' : 'border-transparent')}
+                  className={"w-10 h-10 min-w-[40px] rounded-full " + color.bg + " border-2 transition-all cursor-pointer hover:scale-110 " + (newMed.color.name === color.name ? 'border-[#5C4A3D]' : 'border-transparent')}
                 />
               ))}
             </div>
           </div>
-          <button onClick={addToCabinet} className="w-full bg-[#8BA888] text-white py-4 rounded-xl font-bold flex items-center justify-center gap-2 active:scale-95 transition-transform">
+          <button onClick={addToCabinet} className="w-full bg-[#8BA888] text-white py-4 rounded-xl font-bold flex items-center justify-center gap-2 active:scale-95 transition-transform cursor-pointer">
             <Plus size={20} /> Add to Cabinet
           </button>
         </div>
@@ -282,7 +285,7 @@ return (
                   </p>
                 </div>
               </div>
-              <button onClick={() => setInventory(inventory.filter(i => i.id !== med.id))} className="p-3 text-red-400 hover:bg-red-50 rounded-xl transition-colors">
+              <button onClick={() => setInventory(inventory.filter(i => i.id !== med.id))} className="p-3 text-red-400 hover:bg-red-50 rounded-xl transition-colors cursor-pointer">
                 <Trash2 size={20} />
               </button>
             </div>
@@ -300,18 +303,21 @@ return (
             <p className="text-center text-[#A89F91] py-4">Please add medicine to the Cabinet first.</p>
           ) : (
             <div>
-              <select 
-                value={selectedMedId} onChange={e => setSelectedMedId(e.target.value)}
-                className="w-full p-4 bg-[#F5F0EA] rounded-xl outline-none font-medium appearance-none mb-4"
-              >
-                <option value="" disabled>Select Medicine...</option>
-                {inventory.map(med => <option key={med.id} value={med.id}>{med.name}</option>)}
-              </select>
+              <div className="relative mb-4">
+                <select 
+                  value={selectedMedId} onChange={e => setSelectedMedId(e.target.value)}
+                  className="w-full p-4 bg-[#F5F0EA] rounded-xl outline-none border-2 border-transparent focus:border-[#8BA888] hover:border-[#E8DFD5] transition-colors font-medium appearance-none cursor-pointer"
+                >
+                  <option value="" disabled>Select Medicine...</option>
+                  {inventory.map(med => <option key={med.id} value={med.id}>{med.name}</option>)}
+                </select>
+                <ChevronDown className="absolute right-4 top-1/2 transform -translate-y-1/2 text-[#A89F91] pointer-events-none" size={20} />
+              </div>
               <input 
                 type="time" value={newTime} onChange={e => setNewTime(e.target.value)}
-                className="w-full p-4 bg-[#F5F0EA] rounded-xl outline-none font-medium mb-4"
+                className="w-full p-4 bg-[#F5F0EA] rounded-xl outline-none border-2 border-transparent focus:border-[#8BA888] hover:border-[#E8DFD5] transition-colors font-medium mb-4 cursor-pointer"
               />
-              <button onClick={addSchedule} className="w-full bg-[#8BA888] text-white py-4 rounded-xl font-bold flex items-center justify-center gap-2 active:scale-95 transition-transform">
+              <button onClick={addSchedule} className="w-full bg-[#8BA888] text-white py-4 rounded-xl font-bold flex items-center justify-center gap-2 active:scale-95 transition-transform cursor-pointer">
                 <Plus size={20} /> Set Alarm
               </button>
             </div>
@@ -327,7 +333,7 @@ return (
                   <h3 className={"font-bold text-lg " + med.color.text}>{format12Hour(sched.time)}</h3>
                   <p className={"text-sm font-medium opacity-80 " + med.color.text}>{med.name}</p>
                 </div>
-                <button onClick={() => setSchedules(schedules.filter(s => s.id !== sched.id))} className={"p-3 opacity-60 hover:opacity-100 transition-opacity " + med.color.text}>
+                <button onClick={() => setSchedules(schedules.filter(s => s.id !== sched.id))} className={"p-3 opacity-60 hover:opacity-100 transition-opacity cursor-pointer " + med.color.text}>
                   <Trash2 size={20} />
                 </button>
               </div>
@@ -341,7 +347,7 @@ return (
       <motion.div initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} className="space-y-6">
         <div className="flex justify-between items-center">
           <h2 className="text-2xl font-bold flex items-center gap-2"><History /> Adherence Log</h2>
-          <button onClick={() => setHistory([])} className="text-sm text-[#A89F91] hover:text-red-400">Clear</button>
+          <button onClick={() => setHistory([])} className="text-sm text-[#A89F91] hover:text-red-400 cursor-pointer">Clear</button>
         </div>
         <div className="bg-white rounded-[2rem] shadow-sm border border-[#E8DFD5] overflow-hidden p-2">
           {history.length === 0 ? <p className="text-center text-[#A89F91] p-6">No history recorded yet.</p> : null}
@@ -368,7 +374,7 @@ return (
     ].map(tab => (
       <button 
         key={tab.id} onClick={() => setActiveTab(tab.id)}
-        className={"flex flex-col items-center p-2 transition-colors " + (activeTab === tab.id ? 'text-[#8BA888]' : 'text-[#A89F91] hover:text-[#5C4A3D]')}
+        className={"flex flex-col items-center p-2 transition-colors cursor-pointer " + (activeTab === tab.id ? 'text-[#8BA888]' : 'text-[#A89F91] hover:text-[#5C4A3D]')}
       >
         <tab.icon size={24} className={activeTab === tab.id ? 'fill-[#8BA888]/20' : ''} />
         <span className="text-[10px] font-bold mt-1 uppercase tracking-wider">{tab.label}</span>
