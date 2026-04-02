@@ -1,207 +1,4 @@
-#include <Arduino.h>
-#include <WiFi.h>
-#include <time.h>
-#include <LiquidCrystal.h>
-#include <LiquidCrystal_I2C.h>
-#include <ESP32Servo.h>
-#include <PubSubClient.h>
-#include <ArduinoJson.h>
-
-#define LED_RED 25
-#define BUZZER_PIN 26
-#define LED_BLUE 27
-#define LED_GREEN 13
-#define BUTTON_PIN 14
-#define SERVO_PIN 15
-
-LiquidCrystal lcd_main(19, 18, 17, 16, 4, 2);
-LiquidCrystal_I2C lcd_title(0x27, 16, 2);
-Servo dispenserServo;
-WiFiClient espClient;
-PubSubClient client(espClient);
-
-const char* ssid = "TALIA";
-const char* password = "123456789";
-const char* mqtt_server = "broker.emqx.io";
-const char* command_topic = "cozy/dispenser/commands";
-const char* status_topic = "cozy/dispenser/status";
-
-String scheduledTime = "08:00:00";
-String pillName = "No Meds Set";
-String scheduleSlot = "STANDBY";
-String dropSide = "left";
-
-bool manualNudgeActive = false;
-bool alarmActive = false;
-bool medsTakenForThisMinute = false;
-
-void callback(char* topic, byte* payload, unsigned int length) {
-StaticJsonDocument<500> doc;
-deserializeJson(doc, payload, length);
-
-const char* command = doc["command"];
-
-if (strcmp(command, "remote_override") == 0) {
-manualNudgeActive = true;
-medsTakenForThisMinute = false;
-if (doc["side"]) {
-dropSide = doc["side"].as<String>();
-}
-client.publish(status_topic, R"({"status":"Waiting for Patient..."})");
-}
-
-if (strcmp(command, "update_schedule") == 0) {
-scheduledTime = doc["time"].as<String>();
-pillName = doc["pillName"].as<String>();
-scheduleSlot = doc["slot"].as<String>();
-dropSide = doc["side"].as<String>();
-client.publish(status_topic, R"({"status":"Schedule Synced"})");
-medsTakenForThisMinute = false;
-}
-}
-
-void reconnect() {
-while (!client.connected()) {
-if (client.connect("ESP32_Dispenser_Cloud_ID")) {
-client.subscribe(command_topic);
-client.publish(status_topic, R"({"status":"Hardware Online"})");
-} else {
-delay(5000);
-}
-}
-}
-
-void setup() {
-Serial.begin(115200);
-pinMode(BUZZER_PIN, OUTPUT);
-pinMode(LED_RED, OUTPUT);
-pinMode(LED_GREEN, OUTPUT);
-pinMode(LED_BLUE, OUTPUT);
-pinMode(BUTTON_PIN, INPUT_PULLUP);
-
-dispenserServo.attach(SERVO_PIN);
-dispenserServo.write(90);
-
-lcd_title.init();
-lcd_title.backlight();
-lcd_title.setCursor(0,0);
-lcd_title.print(" SMART DISPENSER");
-
-lcd_main.begin(20, 4);
-lcd_main.setCursor(0,0);
-lcd_main.print("Connecting Wi-Fi...");
-
-WiFi.begin(ssid, password);
-while (WiFi.status() != WL_CONNECTED) {
-delay(500);
-}
-
-configTime(28800, 0, "pool.ntp.org");
-client.setServer(mqtt_server, 1883);
-client.setCallback(callback);
-lcd_main.clear();
-}
-
-void loop() {
-if (!client.connected()) reconnect();
-client.loop();
-
-struct tm timeinfo;
-if(!getLocalTime(&timeinfo)) return;
-
-char t[9];
-strftime(t, 9, "%H:%M:%S", &timeinfo);
-String currentTime = String(t);
-
-time_t now;
-time(&now);
-time_t pre_now = now + 60;
-struct tm pre_ti;
-localtime_r(&pre_now, &pre_ti);
-char pt[9];
-strftime(pt, 9, "%H:%M:%S", &pre_ti);
-String preAlarmTime = String(pt);
-
-bool isPreAlarm = (preAlarmTime == scheduledTime && timeinfo.tm_sec < 10);
-
-if (isPreAlarm && !medsTakenForThisMinute) {
-if (timeinfo.tm_sec % 2 == 0) {
-digitalWrite(BUZZER_PIN, HIGH);
-} else {
-digitalWrite(BUZZER_PIN, LOW);
-}
-}
-
-if (currentTime == scheduledTime && !medsTakenForThisMinute) {
-alarmActive = true;
-client.publish(status_topic, R"({"status":"Alarm Ringing!"})");
-}
-
-if (alarmActive || manualNudgeActive) {
-if (timeinfo.tm_sec % 2 == 0) {
-digitalWrite(BUZZER_PIN, HIGH);
-digitalWrite(LED_RED, HIGH);
-} else {
-digitalWrite(BUZZER_PIN, LOW);
-digitalWrite(LED_RED, LOW);
-}
-
-if (alarmActive && timeinfo.tm_sec == 59) {
-  alarmActive = false;
-  digitalWrite(BUZZER_PIN, LOW);
-  digitalWrite(LED_RED, LOW);
-  client.publish(status_topic, R"({"status":"Missed Medication"})");
-}
-} else if (!medsTakenForThisMinute) {
-digitalWrite(LED_BLUE, HIGH);
-} else {
-digitalWrite(LED_BLUE, LOW);
-}
-
-if (digitalRead(BUTTON_PIN) == LOW && (alarmActive || manualNudgeActive)) {
-if (dropSide == "left") {
-dispenserServo.write(180);
-} else {
-dispenserServo.write(0);
-}
-delay(1000);
-dispenserServo.write(90);
-
-alarmActive = false;
-manualNudgeActive = false;
-medsTakenForThisMinute = true;
-
-digitalWrite(BUZZER_PIN, LOW);
-digitalWrite(LED_RED, LOW);
-digitalWrite(LED_GREEN, HIGH);
-delay(2000);
-digitalWrite(LED_GREEN, LOW);
-
-client.publish(status_topic, R"({"status":"Medication Taken"})");
-}
-
-lcd_main.setCursor(0, 0);
-String displaySlot = scheduleSlot + "                    ";
-lcd_main.print(displaySlot.substring(0, 20));
-
-lcd_main.setCursor(0, 1);
-String displayMed = "MED: " + pillName + "                    ";
-lcd_main.print(displayMed.substring(0, 20));
-
-lcd_main.setCursor(0, 2);
-String displayTarget = "DRINK AT: " + scheduledTime + "          ";
-lcd_main.print(displayTarget.substring(0, 20));
-
-lcd_main.setCursor(0, 3);
-String displayNow = "NOW: " + currentTime + "               ";
-lcd_main.print(displayNow.substring(0, 20));
-
-if (currentTime == "00:00:00") medsTakenForThisMinute = false;
-}
-
-FULL DASHBOARD CODE APP.JSX
-
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import mqtt from 'mqtt';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Pill, Clock, LayoutDashboard, History, Bell, Plus, Trash2, CheckCircle2, AlertCircle } from 'lucide-react';
@@ -228,11 +25,26 @@ const [newMed, setNewMed] = useState({ name: '', color: PILL_COLORS[0], side: 'l
 const [newTime, setNewTime] = useState('08:00');
 const [selectedMedId, setSelectedMedId] = useState('');
 
+const schedulesRef = useRef(schedules);
+
 useEffect(() => {
 localStorage.setItem('medInventory', JSON.stringify(inventory));
 localStorage.setItem('medSchedules', JSON.stringify(schedules));
 localStorage.setItem('medHistory', JSON.stringify(history));
+schedulesRef.current = schedules;
 }, [inventory, schedules, history]);
+
+const removePastDose = () => {
+setSchedules(prev => {
+const now = new Date();
+const currentMinutes = now.getHours() * 60 + now.getMinutes();
+return prev.filter(s => {
+const [h, m] = s.time.split(':');
+const schedMinutes = parseInt(h, 10) * 60 + parseInt(m, 10);
+return Math.abs(currentMinutes - schedMinutes) > 5;
+});
+});
+};
 
 useEffect(() => {
 const mqttClient = mqtt.connect('wss://broker.emqx.io:8084/mqtt');
@@ -251,10 +63,12 @@ mqttClient.on('message', (topic, message) => {
     if (data.status === "Medication Taken") {
       logHistory("Medication dispensed successfully.");
       showToast("Medication Taken!", "success");
+      removePastDose();
     }
     if (data.status === "Missed Medication") {
       logHistory("Missed Dose Alert!");
       showToast("Missed Dose", "error");
+      removePastDose();
     }
   }
 });
@@ -289,12 +103,30 @@ const sorted = [...schedules].sort((a, b) => a.time.localeCompare(b.time));
 
 for (let s of sorted) {
   const [h, m] = s.time.split(':');
-  if (parseInt(h) * 60 + parseInt(m) > currentMinutes) {
+  if (parseInt(h, 10) * 60 + parseInt(m, 10) >= currentMinutes) {
     return s;
   }
 }
 return sorted[0];
 };
+
+const nextDose = getNextDose();
+
+useEffect(() => {
+if (client && nextDose) {
+const med = inventory.find(m => m.id === nextDose.medId);
+if (med) {
+const payload = JSON.stringify({
+command: "update_schedule",
+time: nextDose.time + ":00",
+slot: "UPCOMING DOSE",
+pillName: med.name,
+side: med.side
+});
+client.publish('cozy/dispenser/commands', payload);
+}
+}
+}, [schedules, client, inventory]);
 
 const addToCabinet = () => {
 if (!newMed.name) return showToast("Medicine name required", "error");
@@ -305,29 +137,10 @@ showToast("Added to Cabinet", "success");
 
 const addSchedule = () => {
 if (!selectedMedId) return showToast("Select a medicine first", "error");
-const med = inventory.find(m => m.id === parseInt(selectedMedId));
-
-const newSchedule = { id: Date.now(), medId: med.id, time: newTime };
+const newSchedule = { id: Date.now(), medId: parseInt(selectedMedId, 10), time: newTime };
 const updated = [...schedules, newSchedule].sort((a, b) => a.time.localeCompare(b.time));
 setSchedules(updated);
 showToast("Schedule Set", "success");
-
-syncNextToMachine(updated);
-};
-
-const syncNextToMachine = (scheds) => {
-if (!client || scheds.length === 0) return;
-const next = scheds[0];
-const med = inventory.find(m => m.id === next.medId);
-
-const payload = JSON.stringify({
-  command: "update_schedule",
-  time: next.time + ":00",
-  slot: "UPCOMING DOSE",
-  pillName: med.name,
-  side: med.side
-});
-client.publish('cozy/dispenser/commands', payload);
 };
 
 const triggerOverride = (side) => {
@@ -337,8 +150,6 @@ logHistory("Manual override triggered.");
 showToast("Manual Drop Activated", "success");
 }
 };
-
-const nextDose = getNextDose();
 
 return (
 <div className="min-h-screen bg-[#FDFBF7] text-[#5C4A3D] font-sans pb-24 overflow-x-hidden">
@@ -358,7 +169,7 @@ return (
     {toast && (
       <motion.div 
         initial={{ opacity: 0, y: 50 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 20 }}
-        className={"fixed bottom-24 left-1/2 transform -translate-x-1/2 px-6 py-3 rounded-full shadow-2xl flex items-center gap-3 z-50 text-white font-medium " + (toast.type === 'error' ? 'bg-[#D47373]' : 'bg-[#8BA888]')}
+        className={"fixed bottom-24 left-1/2 transform -translate-x-1/2 px-6 py-3 rounded-full shadow-2xl flex items-center gap-3 z-50 text-white font-medium w-max max-w-[90%] " + (toast.type === 'error' ? 'bg-[#D47373]' : 'bg-[#8BA888]')}
       >
         {toast.type === 'error' ? <AlertCircle size={18} /> : <CheckCircle2 size={18} />}
         {toast.msg}
@@ -425,7 +236,7 @@ return (
               {PILL_COLORS.map(color => (
                 <button 
                   key={color.name} onClick={() => setNewMed({...newMed, color})}
-                  className={"w-10 h-10 rounded-full " + color.bg + " border-2 transition-all " + (newMed.color.name === color.name ? 'border-[#5C4A3D]' : 'border-transparent')}
+                  className={"w-10 h-10 min-w-[40px] rounded-full " + color.bg + " border-2 transition-all " + (newMed.color.name === color.name ? 'border-[#5C4A3D]' : 'border-transparent')}
                 />
               ))}
             </div>
