@@ -1,168 +1,370 @@
 import React, { useState, useEffect } from 'react';
 import mqtt from 'mqtt';
+import { motion, AnimatePresence } from 'framer-motion';
+import { Pill, Clock, LayoutDashboard, History, Bell, Plus, Trash2, CheckCircle2, AlertCircle } from 'lucide-react';
+
+// Cozy Pastel Color Palette for Pills
+const PILL_COLORS = [
+  { name: 'Sage', bg: 'bg-[#E3EFE0]', text: 'text-[#4A6741]' },
+  { name: 'Peach', bg: 'bg-[#FFE5D9]', text: 'text-[#9D5C43]' },
+  { name: 'Lavender', bg: 'bg-[#F3E8FF]', text: 'text-[#6B4C9A]' },
+  { name: 'Butter', bg: 'bg-[#FEFAE0]', text: 'text-[#8A793A]' },
+  { name: 'Sky', bg: 'bg-[#E0F4FF]', text: 'text-[#3A7292]' },
+];
 
 export default function App() {
-const [client, setClient] = useState(null);
-const [connectionState, setConnectionState] = useState("Connecting to Cloud...");
-const [machineStatus, setMachineStatus] = useState("Standby");
+  // --- STATE MANAGEMENT ---
+  const [activeTab, setActiveTab] = useState('home');
+  const [client, setClient] = useState(null);
+  const [machineStatus, setMachineStatus] = useState("Waking up...");
+  const [toast, setToast] = useState(null);
 
-const [schedules, setSchedules] = useState(() => {
-const saved = localStorage.getItem("medSchedules");
-if (saved) {
-return JSON.parse(saved);
-}
-return [];
-});
+  // Local Storage States
+  const [inventory, setInventory] = useState(() => JSON.parse(localStorage.getItem('medInventory')) || []);
+  const [schedules, setSchedules] = useState(() => JSON.parse(localStorage.getItem('medSchedules')) || []);
+  const [history, setHistory] = useState(() => JSON.parse(localStorage.getItem('medHistory')) || []);
 
-const [slot, setSlot] = useState("Morning Meds");
-const [pillName, setPillName] = useState("");
-const [time, setTime] = useState("08:00");
-const [side, setSide] = useState("left");
+  // Form States
+  const [newMed, setNewMed] = useState({ name: '', color: PILL_COLORS[0], side: 'left' });
+  const [newTime, setNewTime] = useState('08:00');
+  const [selectedMedId, setSelectedMedId] = useState('');
 
-useEffect(() => {
-localStorage.setItem("medSchedules", JSON.stringify(schedules));
-}, [schedules]);
+  // Save to Local Storage automatically when data changes
+  useEffect(() => {
+    localStorage.setItem('medInventory', JSON.stringify(inventory));
+    localStorage.setItem('medSchedules', JSON.stringify(schedules));
+    localStorage.setItem('medHistory', JSON.stringify(history));
+  }, [inventory, schedules, history]);
 
-useEffect(() => {
-const mqttClient = mqtt.connect('wss://broker.emqx.io:8084/mqtt');
+  // --- MQTT CLOUD CONNECTION ---
+  useEffect(() => {
+    const mqttClient = mqtt.connect('wss://broker.emqx.io:8084/mqtt');
+    
+    mqttClient.on('connect', () => {
+      setClient(mqttClient);
+      showToast("Cloud connection established", "success");
+      mqttClient.subscribe('cozy/dispenser/status');
+    });
 
-mqttClient.on('connect', () => {
-  setClient(mqttClient);
-  setConnectionState("Cloud Connected");
-  mqttClient.subscribe('cozy/dispenser/status');
-});
+    mqttClient.on('message', (topic, message) => {
+      if (topic === 'cozy/dispenser/status') {
+        const data = JSON.parse(message.toString());
+        setMachineStatus(data.status);
+        
+        // If hardware confirms medication taken, log it!
+        if (data.status === "Medication Taken") {
+          logHistory("Medication dispensed successfully.");
+          showToast("Medication Taken!", "success");
+        }
+        if (data.status === "Missed Medication") {
+          logHistory("Missed Dose Alert!");
+          showToast("Missed Dose", "error");
+        }
+      }
+    });
 
-mqttClient.on('message', (topic, message) => {
-  if (topic === 'cozy/dispenser/status') {
-    try {
-      const data = JSON.parse(message.toString());
-      setMachineStatus(data.status);
-    } catch (e) {
-      console.error("Parse error");
+    return () => mqttClient.end();
+  }, []);
+
+  // --- HELPER FUNCTIONS ---
+  const showToast = (msg, type = "success") => {
+    setToast({ msg, type });
+    setTimeout(() => setToast(null), 3000);
+  };
+
+  const logHistory = (action) => {
+    const newLog = { id: Date.now(), action, time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) };
+    setHistory(prev => [newLog, ...prev].slice(0, 10)); // Keep last 10
+  };
+
+  const format12Hour = (time24) => {
+    const [hours, minutes] = time24.split(':');
+    const h = parseInt(hours, 10);
+    const ampm = h >= 12 ? 'PM' : 'AM';
+    const formattedHours = h % 12 || 12;
+    return `${formattedHours}:${minutes} ${ampm}`;
+  };
+
+  const getNextDose = () => {
+    if (schedules.length === 0) return null;
+    const now = new Date();
+    const currentMinutes = now.getHours() * 60 + now.getMinutes();
+    
+    // Sort schedules by time
+    const sorted = [...schedules].sort((a, b) => a.time.localeCompare(b.time));
+    
+    // Find the first schedule that hasn't happened yet today
+    for (let s of sorted) {
+      const [h, m] = s.time.split(':');
+      if (parseInt(h) * 60 + parseInt(m) > currentMinutes) {
+        return s;
+      }
     }
-  }
-});
+    // If all are done for today, return the first one for tomorrow
+    return sorted[0];
+  };
 
-return () => mqttClient.end();
-}, []);
+  // --- ACTIONS ---
+  const addToCabinet = () => {
+    if (!newMed.name) return showToast("Medicine name required", "error");
+    setInventory([...inventory, { ...newMed, id: Date.now() }]);
+    setNewMed({ name: '', color: PILL_COLORS[0], side: 'left' });
+    showToast("Added to Cabinet", "success");
+  };
 
-const format12Hour = (time24) => {
-let parts = time24.split(':');
-let hours = parseInt(parts[0], 10);
-let minutes = parts[1];
-let ampm = hours >= 12 ? 'PM' : 'AM';
-hours = hours % 12;
-hours = hours ? hours : 12;
-let strHours = hours < 10 ? '0' + hours : hours;
-return strHours + ':' + minutes + ' ' + ampm;
-};
-
-const syncToMachine = (scheduleData) => {
-if (client) {
-const payload = JSON.stringify({
-command: "update_schedule",
-time: scheduleData.time + ":00",
-slot: scheduleData.slot,
-pillName: scheduleData.pillName,
-side: scheduleData.side
-});
-client.publish('cozy/dispenser/commands', payload);
-}
-};
-
-const addSchedule = () => {
-if (!pillName || pillName.trim() === "") return;
-
-const newSchedule = {
-  id: Date.now(),
-  slot: slot,
-  pillName: pillName,
-  time: time,
-  side: side
-};
-
-const updatedList = [...schedules, newSchedule].sort((a, b) => a.time.localeCompare(b.time));
-setSchedules(updatedList);
-syncToMachine(newSchedule);
-setPillName("");
-};
-
-const editSchedule = (scheduleToEdit) => {
-setSlot(scheduleToEdit.slot);
-setPillName(scheduleToEdit.pillName);
-setTime(scheduleToEdit.time);
-setSide(scheduleToEdit.side);
-deleteSchedule(scheduleToEdit.id);
-};
-
-const deleteSchedule = (id) => {
-setSchedules(schedules.filter(s => s.id !== id));
-};
-
-const triggerOverride = () => {
-if (client) {
-const payload = JSON.stringify({ command: "remote_override" });
-client.publish('cozy/dispenser/commands', payload);
-}
-};
-
-return (
-<div style={{ minHeight: '100vh', backgroundColor: '#F5F0EA', display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '24px', color: '#5C4A3D', fontFamily: 'sans-serif' }}>
-
-  <div style={{ backgroundColor: '#FFFFFF', padding: '32px', borderRadius: '32px', boxShadow: '0 10px 25px rgba(0,0,0,0.1)', width: '100%', maxWidth: '600px', border: '4px solid #E8DFD5', marginBottom: '24px' }}>
-    <h1 style={{ fontSize: '28px', fontWeight: 'bold', marginBottom: '8px', textAlign: 'center' }}>My Apothecary</h1>
-    <p style={{ textAlign: 'center', fontSize: '14px', color: '#8BA888', marginBottom: '24px', fontWeight: 'bold' }}>{connectionState}</p>
-
-    <div style={{ backgroundColor: '#E8DFD5', padding: '20px', borderRadius: '16px', marginBottom: '32px', textAlign: 'center' }}>
-      <p style={{ fontSize: '12px', textTransform: 'uppercase', letterSpacing: '2px', color: '#A89F91', marginBottom: '8px' }}>Hardware Status</p>
-      <h2 style={{ fontSize: '20px', fontWeight: 'bold', color: '#5C4A3D' }}>{machineStatus}</h2>
-      <button onClick={triggerOverride} style={{ marginTop: '16px', backgroundColor: '#D4A373', color: '#FFFFFF', padding: '12px 24px', borderRadius: '16px', fontWeight: 'bold', border: 'none', cursor: 'pointer' }}>
-        Force Override Drop
-      </button>
-    </div>
-
-    <h3 style={{ fontSize: '18px', fontWeight: 'bold', marginBottom: '16px' }}>Add New Medication</h3>
-    <div style={{ display: 'grid', gap: '16px', marginBottom: '24px' }}>
-      <select value={slot} onChange={e => setSlot(e.target.value)} style={{ padding: '16px', backgroundColor: '#F5F0EA', borderRadius: '12px', border: 'none', appearance: 'none' }}>
-        <option value="Morning Meds">Morning Meds</option>
-        <option value="Afternoon Meds">Afternoon Meds</option>
-        <option value="Night Meds">Night Meds</option>
-      </select>
-      
-      <input placeholder="Pill Name (e.g. Aspirin)" value={pillName} onChange={e => setPillName(e.target.value)} style={{ padding: '16px', backgroundColor: '#F5F0EA', borderRadius: '12px', border: 'none' }} />
-      
-      <input type="time" value={time} onChange={e => setTime(e.target.value)} style={{ padding: '16px', backgroundColor: '#F5F0EA', borderRadius: '12px', border: 'none' }} />
-      
-      <select value={side} onChange={e => setSide(e.target.value)} style={{ padding: '16px', backgroundColor: '#F5F0EA', borderRadius: '12px', border: 'none', appearance: 'none' }}>
-        <option value="left">Left Tray (Clockwise)</option>
-        <option value="right">Right Tray (Counter-Clockwise)</option>
-      </select>
-
-      <button onClick={addSchedule} style={{ backgroundColor: '#8BA888', color: '#FFFFFF', padding: '16px', borderRadius: '16px', fontWeight: 'bold', border: 'none', cursor: 'pointer' }}>
-        Save and Sync to Hardware
-      </button>
-    </div>
-  </div>
-
-  <div style={{ backgroundColor: '#FFFFFF', padding: '32px', borderRadius: '32px', boxShadow: '0 10px 25px rgba(0,0,0,0.1)', width: '100%', maxWidth: '600px', border: '4px solid #E8DFD5' }}>
-    <h3 style={{ fontSize: '18px', fontWeight: 'bold', marginBottom: '16px' }}>Pending Medications</h3>
+  const addSchedule = () => {
+    if (!selectedMedId) return showToast("Select a medicine first", "error");
+    const med = inventory.find(m => m.id === parseInt(selectedMedId));
     
-    {schedules.length === 0 && <p style={{ color: '#A89F91', textAlign: 'center' }}>No medications in your list yet.</p>}
+    const newSchedule = { id: Date.now(), medId: med.id, time: newTime };
+    const updated = [...schedules, newSchedule].sort((a, b) => a.time.localeCompare(b.time));
+    setSchedules(updated);
+    showToast("Schedule Set", "success");
     
-    {schedules.map(s => (
-      <div key={s.id} style={{ backgroundColor: '#F5F0EA', padding: '16px', borderRadius: '16px', marginBottom: '12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <div>
-          <p style={{ fontWeight: 'bold', margin: '0 0 4px 0' }}>{s.pillName}</p>
-          <p style={{ fontSize: '12px', color: '#A89F91', margin: '0' }}>{s.slot} at {format12Hour(s.time)}</p>
-        </div>
-        <div style={{ display: 'flex', gap: '8px' }}>
-          <button onClick={() => editSchedule(s)} style={{ backgroundColor: '#8BA888', color: '#FFFFFF', padding: '8px 16px', borderRadius: '8px', border: 'none', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold' }}>Edit</button>
-          <button onClick={() => deleteSchedule(s.id)} style={{ backgroundColor: '#D4A373', color: '#FFFFFF', padding: '8px 16px', borderRadius: '8px', border: 'none', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold' }}>Del</button>
-        </div>
-      </div>
-    ))}
-  </div>
+    // Auto-sync the very next dose to the machine
+    syncNextToMachine(updated);
+  };
 
-</div>
-);
+  const syncNextToMachine = (scheds) => {
+    if (!client || scheds.length === 0) return;
+    const next = scheds[0]; // Simplest logic: send the earliest one
+    const med = inventory.find(m => m.id === next.medId);
+    
+    const payload = JSON.stringify({
+      command: "update_schedule",
+      time: next.time + ":00",
+      slot: "UPCOMING DOSE",
+      pillName: med.name,
+      side: med.side
+    });
+    client.publish('cozy/dispenser/commands', payload);
+  };
+
+  const triggerOverride = () => {
+    if (client) {
+      client.publish('cozy/dispenser/commands', JSON.stringify({ command: "remote_override" }));
+      logHistory("Manual override triggered.");
+      showToast("Manual Drop Activated", "success");
+    }
+  };
+
+  const nextDose = getNextDose();
+
+  // --- UI RENDERERS ---
+  return (
+    <div className="min-h-screen bg-[#FDFBF7] text-[#5C4A3D] font-sans pb-24 overflow-x-hidden">
+      
+      {/* HEADER */}
+      <header className="p-6 md:p-8 flex justify-between items-center bg-white shadow-sm sticky top-0 z-10">
+        <div className="flex items-center gap-3">
+          <div className="bg-[#8BA888] p-2 rounded-xl text-white"><Pill size={24} /></div>
+          <h1 className="text-xl md:text-2xl font-bold tracking-tight">Apothecary</h1>
+        </div>
+        <div className="flex items-center gap-2 px-4 py-2 bg-[#FDFBF7] rounded-full shadow-inner text-sm font-medium">
+          <span className={`w-2 h-2 rounded-full ${client ? 'bg-green-500 animate-pulse' : 'bg-red-500'}`}></span>
+          {client ? 'Online' : 'Offline'}
+        </div>
+      </header>
+
+      {/* TOAST NOTIFICATION */}
+      <AnimatePresence>
+        {toast && (
+          <motion.div 
+            initial={{ opacity: 0, y: 50 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 20 }}
+            className={`fixed bottom-24 left-1/2 transform -translate-x-1/2 px-6 py-3 rounded-full shadow-2xl flex items-center gap-3 z-50 text-white font-medium ${toast.type === 'error' ? 'bg-[#D47373]' : 'bg-[#8BA888]'}`}
+          >
+            {toast.type === 'error' ? <AlertCircle size={18} /> : <CheckCircle2 size={18} />}
+            {toast.msg}
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* MAIN CONTENT AREA */}
+      <main className="max-w-2xl mx-auto p-6 space-y-8">
+        
+        {/* TAB 1: HOME */}
+        {activeTab === 'home' && (
+          <motion.div initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} className="space-y-6">
+            
+            {/* NEXT DOSE HERO CARD */}
+            <div className="bg-gradient-to-br from-[#8BA888] to-[#6b8569] p-8 rounded-[2rem] text-white shadow-xl relative overflow-hidden">
+              <div className="absolute top-0 right-0 opacity-10 transform translate-x-4 -translate-y-4">
+                <Clock size={120} />
+              </div>
+              <p className="text-sm font-semibold tracking-widest uppercase mb-2 opacity-80">Next Scheduled Dose</p>
+              {nextDose ? (
+                <>
+                  <h2 className="text-4xl font-black mb-2">{format12Hour(nextDose.time)}</h2>
+                  <p className="text-xl font-medium opacity-90">{inventory.find(m => m.id === nextDose.medId)?.name || 'Unknown'}</p>
+                </>
+              ) : (
+                <h2 className="text-2xl font-bold">No upcoming doses.</h2>
+              )}
+            </div>
+
+            {/* HARDWARE STATUS & OVERRIDE */}
+            <div className="bg-white p-6 rounded-[2rem] shadow-sm border-2 border-[#E8DFD5] flex flex-col md:flex-row justify-between items-center gap-6">
+              <div>
+                <p className="text-xs font-bold text-[#A89F91] uppercase tracking-widest mb-1">Hardware Status</p>
+                <p className="text-lg font-bold">{machineStatus}</p>
+              </div>
+              <button onClick={triggerOverride} className="w-full md:w-auto bg-[#D4A373] hover:bg-[#C39262] text-white px-8 py-4 rounded-2xl font-bold flex items-center justify-center gap-2 transition-colors shadow-lg active:scale-95">
+                <Bell size={20} /> Force Drop Now
+              </button>
+            </div>
+          </motion.div>
+        )}
+
+        {/* TAB 2: CABINET (INVENTORY) */}
+        {activeTab === 'cabinet' && (
+          <motion.div initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} className="space-y-6">
+            <h2 className="text-2xl font-bold flex items-center gap-2"><Pill /> Medicine Cabinet</h2>
+            
+            {/* ADD MEDICATION FORM */}
+            <div className="bg-white p-6 rounded-[2rem] shadow-sm border-2 border-[#E8DFD5] space-y-4">
+              <input 
+                placeholder="Medicine Name (e.g. Vitamin C)" value={newMed.name} onChange={e => setNewMed({...newMed, name: e.target.value})}
+                className="w-full p-4 bg-[#F5F0EA] rounded-xl outline-none focus:ring-2 focus:ring-[#8BA888] font-medium"
+              />
+              <div className="grid grid-cols-2 gap-4">
+                <select 
+                  value={newMed.side} onChange={e => setNewMed({...newMed, side: e.target.value})}
+                  className="w-full p-4 bg-[#F5F0EA] rounded-xl outline-none font-medium appearance-none"
+                >
+                  <option value="left">Compartment A</option>
+                  <option value="right">Compartment B</option>
+                </select>
+                
+                {/* COLOR PICKER */}
+                <div className="flex items-center gap-2 overflow-x-auto p-2 bg-[#F5F0EA] rounded-xl">
+                  {PILL_COLORS.map(color => (
+                    <button 
+                      key={color.name} onClick={() => setNewMed({...newMed, color})}
+                      className={`w-10 h-10 rounded-full ${color.bg} border-2 ${newMed.color.name === color.name ? 'border-[#5C4A3D]' : 'border-transparent'} transition-all`}
+                    />
+                  ))}
+                </div>
+              </div>
+              <button onClick={addToCabinet} className="w-full bg-[#8BA888] text-white py-4 rounded-xl font-bold flex items-center justify-center gap-2 active:scale-95 transition-transform">
+                <Plus size={20} /> Add to Cabinet
+              </button>
+            </div>
+
+            {/* INVENTORY LIST */}
+            <div className="grid gap-4">
+              {inventory.length === 0 ? <p className="text-center text-[#A89F91]">Cabinet is empty.</p> : null}
+              {inventory.map(med => (
+                <div key={med.id} className="bg-white p-4 rounded-2xl flex justify-between items-center shadow-sm border border-[#E8DFD5]">
+                  <div className="flex items-center gap-4">
+                    <div className={`w-12 h-12 rounded-full ${med.color.bg} flex items-center justify-center`}>
+                      <Pill className={med.color.text} size={24} />
+                    </div>
+                    <div>
+                      <h3 className="font-bold text-lg">{med.name}</h3>
+                      <p className="text-xs text-[#A89F91] uppercase tracking-wider">
+                        {med.side === 'left' ? 'Compartment A' : 'Compartment B'}
+                      </p>
+                    </div>
+                  </div>
+                  <button onClick={() => setInventory(inventory.filter(i => i.id !== med.id))} className="p-3 text-red-400 hover:bg-red-50 rounded-xl transition-colors">
+                    <Trash2 size={20} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          </motion.div>
+        )}
+
+        {/* TAB 3: SCHEDULE */}
+        {activeTab === 'schedule' && (
+          <motion.div initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} className="space-y-6">
+            <h2 className="text-2xl font-bold flex items-center gap-2"><Clock /> Schedule Settings</h2>
+
+            {/* ADD SCHEDULE FORM */}
+            <div className="bg-white p-6 rounded-[2rem] shadow-sm border-2 border-[#E8DFD5] space-y-4">
+              {inventory.length === 0 ? (
+                <p className="text-center text-[#A89F91] py-4">Please add medicine to the Cabinet first.</p>
+              ) : (
+                <>
+                  <select 
+                    value={selectedMedId} onChange={e => setSelectedMedId(e.target.value)}
+                    className="w-full p-4 bg-[#F5F0EA] rounded-xl outline-none font-medium appearance-none"
+                  >
+                    <option value="" disabled>Select Medicine...</option>
+                    {inventory.map(med => <option key={med.id} value={med.id}>{med.name}</option>)}
+                  </select>
+                  <input 
+                    type="time" value={newTime} onChange={e => setNewTime(e.target.value)}
+                    className="w-full p-4 bg-[#F5F0EA] rounded-xl outline-none font-medium"
+                  />
+                  <button onClick={addSchedule} className="w-full bg-[#8BA888] text-white py-4 rounded-xl font-bold flex items-center justify-center gap-2 active:scale-95 transition-transform">
+                    <Plus size={20} /> Set Alarm
+                  </button>
+                </>
+              )}
+            </div>
+
+            {/* PENDING SCHEDULES */}
+            <div className="grid gap-4">
+              {schedules.map(sched => {
+                const med = inventory.find(m => m.id === sched.medId) || { name: 'Deleted Med', color: { bg: 'bg-gray-100', text: 'text-gray-400' } };
+                return (
+                  <div key={sched.id} className={`p-4 rounded-2xl flex justify-between items-center shadow-sm ${med.color.bg} border-2 border-white`}>
+                    <div>
+                      <h3 className={`font-bold text-lg ${med.color.text}`}>{format12Hour(sched.time)}</h3>
+                      <p className={`text-sm font-medium ${med.color.text} opacity-80`}>{med.name}</p>
+                    </div>
+                    <button onClick={() => setSchedules(schedules.filter(s => s.id !== sched.id))} className={`p-3 ${med.color.text} opacity-60 hover:opacity-100 transition-opacity`}>
+                      <Trash2 size={20} />
+                    </button>
+                  </div>
+                )
+              })}
+            </div>
+          </motion.div>
+        )}
+
+        {/* TAB 4: HISTORY LOG */}
+        {activeTab === 'history' && (
+          <motion.div initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} className="space-y-6">
+            <div className="flex justify-between items-center">
+              <h2 className="text-2xl font-bold flex items-center gap-2"><History /> Adherence Log</h2>
+              <button onClick={() => setHistory([])} className="text-sm text-[#A89F91] hover:text-red-400">Clear</button>
+            </div>
+            <div className="bg-white rounded-[2rem] shadow-sm border border-[#E8DFD5] overflow-hidden p-2">
+              {history.length === 0 ? <p className="text-center text-[#A89F91] p-6">No history recorded yet.</p> : null}
+              {history.map((log, index) => (
+                <div key={log.id} className={`p-4 flex justify-between items-center ${index !== history.length - 1 ? 'border-b border-gray-100' : ''}`}>
+                  <div className="flex items-center gap-3">
+                    <div className="w-2 h-2 rounded-full bg-[#8BA888]"></div>
+                    <p className="font-medium text-sm md:text-base">{log.action}</p>
+                  </div>
+                  <span className="text-xs font-bold text-[#A89F91]">{log.time}</span>
+                </div>
+              ))}
+            </div>
+          </motion.div>
+        )}
+      </main>
+
+      {/* FLOATING BOTTOM NAVIGATION */}
+      <nav className="fixed bottom-0 w-full bg-white border-t border-gray-100 pb-safe pt-2 px-6 flex justify-around items-center z-40 h-20 shadow-[0_-10px_40px_rgba(0,0,0,0.05)]">
+        {[
+          { id: 'home', icon: LayoutDashboard, label: 'Home' },
+          { id: 'cabinet', icon: Pill, label: 'Cabinet' },
+          { id: 'schedule', icon: Clock, label: 'Schedule' },
+          { id: 'history', icon: History, label: 'Log' }
+        ].map(tab => (
+          <button 
+            key={tab.id} onClick={() => setActiveTab(tab.id)}
+            className={`flex flex-col items-center p-2 transition-colors ${activeTab === tab.id ? 'text-[#8BA888]' : 'text-[#A89F91] hover:text-[#5C4A3D]'}`}
+          >
+            <tab.icon size={24} className={activeTab === tab.id ? 'fill-[#8BA888]/20' : ''} />
+            <span className="text-[10px] font-bold mt-1 uppercase tracking-wider">{tab.label}</span>
+          </button>
+        ))}
+      </nav>
+      
+    </div>
+  );
 }
