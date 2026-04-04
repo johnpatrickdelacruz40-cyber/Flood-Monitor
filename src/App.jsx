@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Droplets, AlertTriangle, CheckCircle, Clock, History, LayoutDashboard } from 'lucide-react';
@@ -15,7 +16,7 @@ const [history, setHistory] = useState([]);
 useEffect(() => {
 const fetchData = async () => {
 try {
-const response = await fetch('/api/flood');
+const response = await fetch('/api/flood', { cache: 'no-store' });
 const data = await response.json();
 
     if (data.time !== floodData.time) {
@@ -27,6 +28,7 @@ const data = await response.json();
   }
 };
 
+fetchData();
 const interval = setInterval(fetchData, 2000);
 return () => clearInterval(interval);
 }, [floodData.time]);
