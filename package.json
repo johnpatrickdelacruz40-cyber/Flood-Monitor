@@ -9,6 +9,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@tailwindcss/postcss": "latest",
     "@vercel/kv": "^1.0.1",
     "@vitejs/plugin-react": "latest",
     "autoprefixer": "latest",
