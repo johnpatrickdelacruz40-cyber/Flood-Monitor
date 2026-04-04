@@ -1,8 +1,24 @@
 {
   "name": "flood-monitor",
-  "version": "1.0.0",
   "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
   "dependencies": {
-    "@vercel/kv": "^1.0.1"
+    "@vercel/kv": "^1.0.1",
+    "lucide-react": "latest",
+    "react": "latest",
+    "react-dom": "latest"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "latest",
+    "autoprefixer": "latest",
+    "postcss": "latest",
+    "tailwindcss": "latest",
+    "vite": "latest"
   }
 }
