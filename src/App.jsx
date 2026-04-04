@@ -1,387 +1,65 @@
-import React, { useState, useEffect, useRef } from 'react';
-import mqtt from 'mqtt';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Pill, Clock, LayoutDashboard, History, Bell, Plus, Trash2, CheckCircle2, AlertCircle, ChevronDown } from 'lucide-react';
-
-const PILL_COLORS = [
-{ name: 'Sage', bg: 'bg-[#E3EFE0]', text: 'text-[#4A6741]' },
-{ name: 'Peach', bg: 'bg-[#FFE5D9]', text: 'text-[#9D5C43]' },
-{ name: 'Lavender', bg: 'bg-[#F3E8FF]', text: 'text-[#6B4C9A]' },
-{ name: 'Butter', bg: 'bg-[#FEFAE0]', text: 'text-[#8A793A]' },
-{ name: 'Sky', bg: 'bg-[#E0F4FF]', text: 'text-[#3A7292]' },
-];
+import { Droplets, AlertTriangle, CheckCircle, Clock, History, LayoutDashboard } from 'lucide-react';
 
 export default function App() {
-const [activeTab, setActiveTab] = useState('home');
-const [client, setClient] = useState(null);
-const [machineStatus, setMachineStatus] = useState("Waking up...");
+const [activeTab, setActiveTab] = useState('dashboard');
+const [machineStatus, setMachineStatus] = useState("Online");
 const [toast, setToast] = useState(null);
 
-const [inventory, setInventory] = useState(() => JSON.parse(localStorage.getItem('medInventory')) || []);
-const [schedules, setSchedules] = useState(() => JSON.parse(localStorage.getItem('medSchedules')) || []);
-const [history, setHistory] = useState(() => JSON.parse(localStorage.getItem('medHistory')) || []);
-
-const [newMed, setNewMed] = useState({ name: '', color: PILL_COLORS[0], side: 'left' });
-const [newTime, setNewTime] = useState('08:00');
-const [selectedMedId, setSelectedMedId] = useState('');
-
-const schedulesRef = useRef(schedules);
-
-useEffect(() => {
-localStorage.setItem('medInventory', JSON.stringify(inventory));
-localStorage.setItem('medSchedules', JSON.stringify(schedules));
-localStorage.setItem('medHistory', JSON.stringify(history));
-schedulesRef.current = schedules;
-}, [inventory, schedules, history]);
-
-const removePastDose = () => {
-setSchedules(prev => {
-const now = new Date();
-const currentMinutes = now.getHours() * 60 + now.getMinutes();
-const matchingIndex = prev.findIndex(s => {
-const parts = s.time.split(':');
-const schedMinutes = parseInt(parts[0], 10) * 60 + parseInt(parts[1], 10);
-const diff = Math.abs(currentMinutes - schedMinutes);
-return diff <= 5;
+const [floodData, setFloodData] = useState({
+waterLevel: 0,
+statusLevel: 0,
+date: "Waiting...",
+time: "Waiting..."
 });
 
-  if (matchingIndex !== -1) {
-    const updated = [...prev];
-    updated.splice(matchingIndex, 1);
-    return updated;
-  }
-  return prev;
-});
-};
+const [history, setHistory] = useState([]);
 
-useEffect(() => {
-const mqttClient = mqtt.connect('wss://broker.emqx.io:8084/mqtt');
+let statusText = "Normal";
+let statusColor = "bg-[#E0F4FF]";
+let statusTextColor = "text-[#3A7292]";
+let StatusIcon = CheckCircle;
 
-mqttClient.on('connect', () => {
-  setClient(mqttClient);
-  showToast("Cloud connection established", "success");
-  mqttClient.subscribe('cozy/dispenser/status');
-});
-
-mqttClient.on('message', (topic, message) => {
-  if (topic === 'cozy/dispenser/status') {
-    const data = JSON.parse(message.toString());
-    setMachineStatus(data.status);
-    
-    if (data.status === "Medication Taken") {
-      logHistory("Medication dispensed successfully.");
-      showToast("Medication Taken!", "success");
-      removePastDose();
-    }
-    if (data.status === "Missed Medication") {
-      logHistory("Missed Dose Alert!");
-      showToast("Missed Dose", "error");
-      removePastDose();
-    }
-  }
-});
-
-return () => mqttClient.end();
-}, []);
-
-const showToast = (msg, type = "success") => {
-setToast({ msg, type });
-setTimeout(() => setToast(null), 3000);
-};
-
-const logHistory = (action) => {
-const newLog = { id: Date.now(), action, time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) };
-setHistory(prev => [newLog, ...prev].slice(0, 10));
-};
-
-const format12Hour = (time24) => {
-const parts = time24.split(':');
-const h = parseInt(parts[0], 10);
-const minutes = parts[1];
-const ampm = h >= 12 ? 'PM' : 'AM';
-const formattedHours = h % 12 || 12;
-return formattedHours + ':' + minutes + ' ' + ampm;
-};
-
-const getNextDose = () => {
-if (schedules.length === 0) return null;
-const now = new Date();
-const currentMinutes = now.getHours() * 60 + now.getMinutes();
-
-const sorted = [...schedules].sort((a, b) => a.time.localeCompare(b.time));
-
-for (let i = 0; i < sorted.length; i++) {
-  const parts = sorted[i].time.split(':');
-  if (parseInt(parts[0], 10) * 60 + parseInt(parts[1], 10) >= currentMinutes) {
-    return sorted[i];
-  }
+if (floodData.statusLevel === 1) {
+statusText = "Warning";
+statusColor = "bg-[#FEFAE0]";
+statusTextColor = "text-[#8A793A]";
+StatusIcon = AlertTriangle;
+} else if (floodData.statusLevel === 2) {
+statusText = "Alert";
+statusColor = "bg-[#FFE5D9]";
+statusTextColor = "text-[#9D5C43]";
+StatusIcon = AlertTriangle;
+} else if (floodData.statusLevel === 3) {
+statusText = "EVACUATE";
+statusColor = "bg-[#F3E8FF]";
+statusTextColor = "text-[#6B4C9A]";
+StatusIcon = AlertTriangle;
 }
-return sorted[0];
-};
-
-const nextDose = getNextDose();
-
-useEffect(() => {
-if (client) {
-if (nextDose) {
-const med = inventory.find(m => m.id === nextDose.medId);
-if (med) {
-const payload = JSON.stringify({
-command: "update_schedule",
-time: nextDose.time + ":00",
-slot: "UPCOMING DOSE",
-pillName: med.name,
-side: med.side
-});
-client.publish('cozy/dispenser/commands', payload);
-}
-} else {
-const payload = JSON.stringify({
-command: "update_schedule",
-time: "00:00:00",
-slot: "STANDBY",
-pillName: "No Meds Set",
-side: "left"
-});
-client.publish('cozy/dispenser/commands', payload);
-}
-}
-}, [schedules, client, inventory]);
-
-const addToCabinet = () => {
-if (!newMed.name) return showToast("Medicine name required", "error");
-const newItem = { name: newMed.name, color: newMed.color, side: newMed.side, id: Date.now() };
-setInventory([...inventory, newItem]);
-setNewMed({ name: '', color: PILL_COLORS[0], side: 'left' });
-showToast("Added to Cabinet", "success");
-};
-
-const addSchedule = () => {
-if (!selectedMedId) return showToast("Select a medicine first", "error");
-const newSchedule = { id: Date.now(), medId: parseInt(selectedMedId, 10), time: newTime };
-const updated = [...schedules, newSchedule].sort((a, b) => a.time.localeCompare(b.time));
-setSchedules(updated);
-showToast("Schedule Set", "success");
-};
-
-const triggerOverride = (side) => {
-if (client) {
-client.publish('cozy/dispenser/commands', JSON.stringify({ command: "remote_override", side: side }));
-logHistory("Manual override triggered.");
-showToast("Manual Drop Activated", "success");
-}
-};
 
 return (
-<div className="min-h-screen bg-[#FDFBF7] text-[#5C4A3D] font-sans pb-24 overflow-x-hidden">
+<div className="min-h-screen bg-slate-50 text-slate-800 font-sans p-6">
+<div className="max-w-md mx-auto bg-white rounded-3xl shadow-xl overflow-hidden border border-slate-100">
 
-  <header className="p-6 md:p-8 flex justify-between items-center bg-white shadow-sm sticky top-0 z-10">
-    <div className="flex items-center gap-3">
-      <div className="bg-[#8BA888] p-2 rounded-xl text-white"><Pill size={24} /></div>
-      <h1 className="text-xl md:text-2xl font-bold tracking-tight">Apothecary</h1>
+    <div className="p-8 text-center">
+      <h1 className="text-2xl font-bold text-slate-700 mb-2">Flood Monitor</h1>
+      <p className="text-slate-500">Group 5 Dashboard</p>
     </div>
-    <div className="flex items-center gap-2 px-4 py-2 bg-[#FDFBF7] rounded-full shadow-inner text-sm font-medium">
-      <span className={"w-2 h-2 rounded-full " + (client ? 'bg-green-500 animate-pulse' : 'bg-red-500')}></span>
-      {client ? 'Online' : 'Offline'}
+
+    <div className="px-8 pb-8">
+      <div className={`p-6 rounded-2xl flex flex-col items-center justify-center transition-colors duration-500 ${statusColor} ${statusTextColor}`}>
+        <StatusIcon size={48} className="mb-4" />
+        <h2 className="text-3xl font-black mb-1">{statusText}</h2>
+        <p className="text-lg font-medium">Water Level: {floodData.waterLevel} cm</p>
+        <div className="mt-4 flex items-center space-x-2 text-sm opacity-80">
+          <Clock size={16} />
+          <span>{floodData.date} | {floodData.time}</span>
+        </div>
+      </div>
     </div>
-  </header>
 
-  <AnimatePresence>
-    {toast && (
-      <motion.div 
-        initial={{ opacity: 0, y: 50 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 20 }}
-        className={"fixed bottom-24 left-1/2 transform -translate-x-1/2 px-6 py-3 rounded-full shadow-2xl flex items-center gap-3 z-50 text-white font-medium w-max max-w-[90%] " + (toast.type === 'error' ? 'bg-[#D47373]' : 'bg-[#8BA888]')}
-      >
-        {toast.type === 'error' ? <AlertCircle size={18} /> : <CheckCircle2 size={18} />}
-        {toast.msg}
-      </motion.div>
-    )}
-  </AnimatePresence>
-
-  <main className="max-w-2xl mx-auto p-6 space-y-8">
-    
-    {activeTab === 'home' && (
-      <motion.div initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} className="space-y-6">
-        
-        <div className="bg-gradient-to-br from-[#8BA888] to-[#6b8569] p-8 rounded-[2rem] text-white shadow-xl relative overflow-hidden">
-          <div className="absolute top-0 right-0 opacity-10 transform translate-x-4 -translate-y-4">
-            <Clock size={120} />
-          </div>
-          <p className="text-sm font-semibold tracking-widest uppercase mb-2 opacity-80">Next Scheduled Dose</p>
-          {nextDose ? (
-            <div>
-              <h2 className="text-4xl font-black mb-2">{format12Hour(nextDose.time)}</h2>
-              <p className="text-xl font-medium opacity-90">{inventory.find(m => m.id === nextDose.medId)?.name || 'Unknown'}</p>
-            </div>
-          ) : (
-            <h2 className="text-2xl font-bold">No upcoming doses.</h2>
-          )}
-        </div>
-
-        <div className="bg-white p-6 rounded-[2rem] shadow-sm border-2 border-[#E8DFD5] flex flex-col md:flex-row justify-between items-center gap-6">
-          <div className="w-full text-center md:text-left">
-            <p className="text-xs font-bold text-[#A89F91] uppercase tracking-widest mb-1">Hardware Status</p>
-            <p className="text-lg font-bold">{machineStatus}</p>
-          </div>
-          <div className="flex w-full md:w-auto gap-3">
-            <button onClick={() => triggerOverride('left')} className="flex-1 md:flex-none bg-[#D4A373] hover:bg-[#C39262] text-white px-6 py-4 rounded-2xl font-bold flex items-center justify-center gap-2 transition-colors shadow-lg active:scale-95 text-sm whitespace-nowrap">
-              <Bell size={16} /> Drop A
-            </button>
-            <button onClick={() => triggerOverride('right')} className="flex-1 md:flex-none bg-[#8BA888] hover:bg-[#7A9677] text-white px-6 py-4 rounded-2xl font-bold flex items-center justify-center gap-2 transition-colors shadow-lg active:scale-95 text-sm whitespace-nowrap">
-              <Bell size={16} /> Drop B
-            </button>
-          </div>
-        </div>
-      </motion.div>
-    )}
-
-    {activeTab === 'cabinet' && (
-      <motion.div initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} className="space-y-6">
-        <h2 className="text-2xl font-bold flex items-center gap-2"><Pill /> Medicine Cabinet</h2>
-        
-        <div className="bg-white p-6 rounded-[2rem] shadow-sm border-2 border-[#E8DFD5] space-y-4">
-          <input 
-            placeholder="Medicine Name (e.g. Vitamin C)" value={newMed.name} onChange={e => setNewMed({...newMed, name: e.target.value})}
-            className="w-full p-4 bg-[#F5F0EA] rounded-xl outline-none border-2 border-transparent focus:border-[#8BA888] hover:border-[#E8DFD5] transition-colors font-medium cursor-pointer"
-          />
-          <div className="grid grid-cols-2 gap-4">
-            <div className="relative">
-              <select 
-                value={newMed.side} onChange={e => setNewMed({...newMed, side: e.target.value})}
-                className="w-full p-4 bg-[#F5F0EA] rounded-xl outline-none border-2 border-transparent focus:border-[#8BA888] hover:border-[#E8DFD5] transition-colors font-medium appearance-none cursor-pointer"
-              >
-                <option value="left">Compartment A</option>
-                <option value="right">Compartment B</option>
-              </select>
-              <ChevronDown className="absolute right-4 top-1/2 transform -translate-y-1/2 text-[#A89F91] pointer-events-none" size={20} />
-            </div>
-            
-            <div className="flex items-center gap-2 overflow-x-auto p-2 bg-[#F5F0EA] rounded-xl border-2 border-transparent">
-              {PILL_COLORS.map(color => (
-                <button 
-                  key={color.name} onClick={() => setNewMed({...newMed, color})}
-                  className={"w-10 h-10 min-w-[40px] rounded-full " + color.bg + " border-2 transition-all cursor-pointer hover:scale-110 " + (newMed.color.name === color.name ? 'border-[#5C4A3D]' : 'border-transparent')}
-                />
-              ))}
-            </div>
-          </div>
-          <button onClick={addToCabinet} className="w-full bg-[#8BA888] text-white py-4 rounded-xl font-bold flex items-center justify-center gap-2 active:scale-95 transition-transform cursor-pointer">
-            <Plus size={20} /> Add to Cabinet
-          </button>
-        </div>
-
-        <div className="grid gap-4">
-          {inventory.length === 0 ? <p className="text-center text-[#A89F91]">Cabinet is empty.</p> : null}
-          {inventory.map(med => (
-            <div key={med.id} className="bg-white p-4 rounded-2xl flex justify-between items-center shadow-sm border border-[#E8DFD5]">
-              <div className="flex items-center gap-4">
-                <div className={"w-12 h-12 rounded-full flex items-center justify-center " + med.color.bg}>
-                  <Pill className={med.color.text} size={24} />
-                </div>
-                <div>
-                  <h3 className="font-bold text-lg">{med.name}</h3>
-                  <p className="text-xs text-[#A89F91] uppercase tracking-wider">
-                    {med.side === 'left' ? 'Compartment A' : 'Compartment B'}
-                  </p>
-                </div>
-              </div>
-              <button onClick={() => setInventory(inventory.filter(i => i.id !== med.id))} className="p-3 text-red-400 hover:bg-red-50 rounded-xl transition-colors cursor-pointer">
-                <Trash2 size={20} />
-              </button>
-            </div>
-          ))}
-        </div>
-      </motion.div>
-    )}
-
-    {activeTab === 'schedule' && (
-      <motion.div initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} className="space-y-6">
-        <h2 className="text-2xl font-bold flex items-center gap-2"><Clock /> Schedule Settings</h2>
-
-        <div className="bg-white p-6 rounded-[2rem] shadow-sm border-2 border-[#E8DFD5] space-y-4">
-          {inventory.length === 0 ? (
-            <p className="text-center text-[#A89F91] py-4">Please add medicine to the Cabinet first.</p>
-          ) : (
-            <div>
-              <div className="relative mb-4">
-                <select 
-                  value={selectedMedId} onChange={e => setSelectedMedId(e.target.value)}
-                  className="w-full p-4 bg-[#F5F0EA] rounded-xl outline-none border-2 border-transparent focus:border-[#8BA888] hover:border-[#E8DFD5] transition-colors font-medium appearance-none cursor-pointer"
-                >
-                  <option value="" disabled>Select Medicine...</option>
-                  {inventory.map(med => <option key={med.id} value={med.id}>{med.name}</option>)}
-                </select>
-                <ChevronDown className="absolute right-4 top-1/2 transform -translate-y-1/2 text-[#A89F91] pointer-events-none" size={20} />
-              </div>
-              <input 
-                type="time" value={newTime} onChange={e => setNewTime(e.target.value)}
-                className="w-full p-4 bg-[#F5F0EA] rounded-xl outline-none border-2 border-transparent focus:border-[#8BA888] hover:border-[#E8DFD5] transition-colors font-medium mb-4 cursor-pointer"
-              />
-              <button onClick={addSchedule} className="w-full bg-[#8BA888] text-white py-4 rounded-xl font-bold flex items-center justify-center gap-2 active:scale-95 transition-transform cursor-pointer">
-                <Plus size={20} /> Set Alarm
-              </button>
-            </div>
-          )}
-        </div>
-
-        <div className="grid gap-4">
-          {schedules.map(sched => {
-            const med = inventory.find(m => m.id === sched.medId) || { name: 'Deleted Med', color: { bg: 'bg-gray-100', text: 'text-gray-400' } };
-            return (
-              <div key={sched.id} className={"p-4 rounded-2xl flex justify-between items-center shadow-sm border-2 border-white " + med.color.bg}>
-                <div>
-                  <h3 className={"font-bold text-lg " + med.color.text}>{format12Hour(sched.time)}</h3>
-                  <p className={"text-sm font-medium opacity-80 " + med.color.text}>{med.name}</p>
-                </div>
-                <button onClick={() => setSchedules(schedules.filter(s => s.id !== sched.id))} className={"p-3 opacity-60 hover:opacity-100 transition-opacity cursor-pointer " + med.color.text}>
-                  <Trash2 size={20} />
-                </button>
-              </div>
-            )
-          })}
-        </div>
-      </motion.div>
-    )}
-
-    {activeTab === 'history' && (
-      <motion.div initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} className="space-y-6">
-        <div className="flex justify-between items-center">
-          <h2 className="text-2xl font-bold flex items-center gap-2"><History /> Adherence Log</h2>
-          <button onClick={() => setHistory([])} className="text-sm text-[#A89F91] hover:text-red-400 cursor-pointer">Clear</button>
-        </div>
-        <div className="bg-white rounded-[2rem] shadow-sm border border-[#E8DFD5] overflow-hidden p-2">
-          {history.length === 0 ? <p className="text-center text-[#A89F91] p-6">No history recorded yet.</p> : null}
-          {history.map((log, index) => (
-            <div key={log.id} className={"p-4 flex justify-between items-center " + (index !== history.length - 1 ? 'border-b border-gray-100' : '')}>
-              <div className="flex items-center gap-3">
-                <div className="w-2 h-2 rounded-full bg-[#8BA888]"></div>
-                <p className="font-medium text-sm md:text-base">{log.action}</p>
-              </div>
-              <span className="text-xs font-bold text-[#A89F91]">{log.time}</span>
-            </div>
-          ))}
-        </div>
-      </motion.div>
-    )}
-  </main>
-
-  <nav className="fixed bottom-0 w-full bg-white border-t border-gray-100 pb-safe pt-2 px-6 flex justify-around items-center z-40 h-20 shadow-[0_-10px_40px_rgba(0,0,0,0.05)]">
-    {[
-      { id: 'home', icon: LayoutDashboard, label: 'Home' },
-      { id: 'cabinet', icon: Pill, label: 'Cabinet' },
-      { id: 'schedule', icon: Clock, label: 'Schedule' },
-      { id: 'history', icon: History, label: 'Log' }
-    ].map(tab => (
-      <button 
-        key={tab.id} onClick={() => setActiveTab(tab.id)}
-        className={"flex flex-col items-center p-2 transition-colors cursor-pointer " + (activeTab === tab.id ? 'text-[#8BA888]' : 'text-[#A89F91] hover:text-[#5C4A3D]')}
-      >
-        <tab.icon size={24} className={activeTab === tab.id ? 'fill-[#8BA888]/20' : ''} />
-        <span className="text-[10px] font-bold mt-1 uppercase tracking-wider">{tab.label}</span>
-      </button>
-    ))}
-  </nav>
-  
+  </div>
 </div>
 );
 }
