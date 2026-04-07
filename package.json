@@ -13,6 +13,7 @@
     "@vercel/kv": "^1.0.1",
     "@vitejs/plugin-react": "latest",
     "autoprefixer": "latest",
+    "framer-motion": "^12.38.0",
     "lucide-react": "latest",
     "postcss": "latest",
     "react": "latest",
