@@ -9,24 +9,14 @@ export default function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(200).end();
 
   if (req.method === 'POST') {
-    try {
-      let data = req.body;
-      if (typeof data === 'string') data = JSON.parse(data);
-
-      if (data && data.waterLevel !== undefined) {
-        latestData = data;
-        floodHistory.unshift(data);
-        if (floodHistory.length > 10) floodHistory.pop();
-      }
-      return res.status(200).json({ success: true });
-    } catch (e) {
-      return res.status(200).json({ error: "Data error" });
+    const data = req.body;
+    if (data && data.waterLevel !== undefined) {
+      latestData = data;
+      floodHistory.unshift(data);
+      if (floodHistory.length > 10) floodHistory.pop();
     }
+    return res.status(200).json({ success: true });
   }
 
-  if (req.method === 'GET') {
-    return res.status(200).json({ latest: latestData, history: floodHistory });
-  }
-
-  return res.status(200).json({ message: "Ready" });
+  return res.status(200).json({ latest: latestData, history: floodHistory });
 }
