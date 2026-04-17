@@ -1,173 +1,224 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { AlertTriangle, CheckCircle, Clock, Droplets, CalendarDays } from 'lucide-react';
+import { AlertTriangle, CheckCircle, Activity, Waves, BellRing, ChevronRight, Clock } from 'lucide-react';
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState('dashboard');
   const [floodData, setFloodData] = useState({
-    waterLevel: 0, statusLevel: 0, date: "Waiting...", time: "Waiting..."
+    waterLevel: 0, statusLevel: 0, date: "--/--/--", time: "--:--:--"
   });
   const [history, setHistory] = useState([]);
+  const [isOnline, setIsOnline] = useState(false);
   const prevStatusRef = useRef(0);
+  const lastFetchTime = useRef(Date.now());
 
-  // YOUR VERCEL API LINK
+  // Replace with your VERCEL URL
   const API_URL = 'https://flood-monitor-seven.vercel.app/api/flood';
 
-  // Ask for Notification Permission on Load
   useEffect(() => {
     if ("Notification" in window && Notification.permission === "default") {
       Notification.requestPermission();
     }
   }, []);
 
-  // Fetch Data
   useEffect(() => {
     const fetchData = async () => {
       try {
         const response = await fetch(API_URL, { cache: 'no-store' });
         const data = await response.json();
-        if (data.latest) setFloodData(data.latest);
+        
+        if (data.latest) {
+          setFloodData(data.latest);
+          setIsOnline(true);
+          lastFetchTime.current = Date.now();
+        }
         if (data.history) setHistory(data.history);
       } catch (e) {
-        console.warn("Connection lost. Retrying...");
+        if (Date.now() - lastFetchTime.current > 6000) setIsOnline(false);
       }
     };
+    
     fetchData();
     const interval = setInterval(fetchData, 2000);
     return () => clearInterval(interval);
   }, []);
 
-  // Push Notification Trigger
   useEffect(() => {
     if (floodData.statusLevel > prevStatusRef.current && floodData.statusLevel > 0) {
       if ("Notification" in window && Notification.permission === "granted") {
-        const status = getStatus(floodData.statusLevel);
-        new Notification(`🚨 ${status.text} ALERT`, {
-          body: `Water Level is at ${floodData.waterLevel}cm. Please take immediate action.`,
-          vibrate: [200, 100, 200]
+        const status = getTheme(floodData.statusLevel);
+        new Notification(`🚨 ${status.label} ALERT`, {
+          body: `Water Level reached ${floodData.waterLevel}cm!`,
+          icon: '/favicon.ico'
         });
       }
     }
     prevStatusRef.current = floodData.statusLevel;
   }, [floodData.statusLevel, floodData.waterLevel]);
 
-  const getStatus = (level) => {
-    const states = {
-      3: { text: "EVACUATE", color: "bg-red-500/20", textColor: "text-red-400", border: "border-red-500/50", glow: "shadow-[0_0_40px_rgba(239,68,68,0.4)]", icon: AlertTriangle, pulse: true },
-      2: { text: "ALERT", color: "bg-orange-500/20", textColor: "text-orange-400", border: "border-orange-500/50", glow: "shadow-[0_0_30px_rgba(249,115,22,0.3)]", icon: AlertTriangle, pulse: false },
-      1: { text: "WARNING", color: "bg-yellow-500/20", textColor: "text-yellow-400", border: "border-yellow-500/50", glow: "shadow-[0_0_20px_rgba(234,179,8,0.2)]", icon: AlertTriangle, pulse: false },
-      0: { text: "NORMAL", color: "bg-emerald-500/10", textColor: "text-emerald-400", border: "border-emerald-500/30", glow: "shadow-none", icon: CheckCircle, pulse: false }
+  const getTheme = (level) => {
+    const themes = {
+      3: { label: "EVACUATE", bg: "bg-red-500", glow: "shadow-red-500/50", text: "text-red-500", border: "border-red-500/30", gradient: "from-red-950 via-red-900/20 to-[#0a0a0a]", icon: AlertTriangle, fill: "#ef4444" },
+      2: { label: "ALERT", bg: "bg-orange-500", glow: "shadow-orange-500/50", text: "text-orange-500", border: "border-orange-500/30", gradient: "from-orange-950 via-orange-900/20 to-[#0a0a0a]", icon: AlertTriangle, fill: "#f97316" },
+      1: { label: "WARNING", bg: "bg-yellow-400", glow: "shadow-yellow-400/50", text: "text-yellow-400", border: "border-yellow-400/30", gradient: "from-yellow-950 via-yellow-900/20 to-[#0a0a0a]", icon: AlertTriangle, fill: "#facc15" },
+      0: { label: "NORMAL", bg: "bg-emerald-500", glow: "shadow-emerald-500/50", text: "text-emerald-500", border: "border-emerald-500/30", gradient: "from-emerald-950 via-emerald-900/20 to-[#0a0a0a]", icon: CheckCircle, fill: "#10b981" }
     };
-    return states[level] || states[0];
+    return themes[level] || themes[0];
   };
 
-  const s = getStatus(floodData.statusLevel);
+  const theme = getTheme(floodData.statusLevel);
+  // Calculate percentage for the liquid fill (Max capacity = 40cm)
+  const fillPercentage = Math.min((floodData.waterLevel / 40) * 100, 100);
 
   return (
-    <div className="min-h-screen bg-[#0f172a] text-slate-200 p-4 md:p-8 flex items-center justify-center font-sans selection:bg-blue-500/30">
+    <div className={`min-h-screen bg-[#0a0a0a] text-slate-200 font-sans selection:bg-white/20 transition-colors duration-1000 bg-gradient-to-br ${theme.gradient} flex items-center justify-center p-4 md:p-8`}>
       
-      <div className="max-w-md w-full relative group">
-        {/* Background Ambient Glow */}
-        <div className={`absolute -inset-1 rounded-[3rem] blur-xl opacity-50 transition-all duration-1000 ${s.glow}`}></div>
+      {/* Maximum width constraint for ultra-wide monitors, perfect on mobile */}
+      <div className="w-full max-w-5xl flex flex-col gap-6">
+        
+        {/* --- NAVBAR --- */}
+        <header className="flex justify-between items-center bg-white/5 backdrop-blur-xl border border-white/10 rounded-3xl p-5 md:px-8 shadow-2xl">
+          <div className="flex items-center gap-4">
+            <div className={`p-3 rounded-2xl bg-white/5 border ${theme.border}`}>
+              <Waves className={theme.text} size={24} />
+            </div>
+            <div>
+              <h1 className="text-xl md:text-2xl font-black text-white tracking-tight">HydroSense OS</h1>
+              <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Group 5 Deployment</p>
+            </div>
+          </div>
+          <div className="flex flex-col items-end">
+            <div className="flex items-center gap-2 bg-white/5 px-3 py-1.5 rounded-full border border-white/10">
+              <span className="relative flex h-2 w-2">
+                {isOnline && <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>}
+                <span className={`relative inline-flex rounded-full h-2 w-2 ${isOnline ? 'bg-emerald-500' : 'bg-slate-600'}`}></span>
+              </span>
+              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-300">
+                {isOnline ? 'Hardware Live' : 'Connecting...'}
+              </span>
+            </div>
+            <p className="text-[10px] font-mono text-slate-500 mt-2">{floodData.time}</p>
+          </div>
+        </header>
 
-        <div className="relative bg-[#1e293b]/80 backdrop-blur-xl rounded-[2.5rem] shadow-2xl border border-slate-700/50 overflow-hidden">
+        {/* --- BENTO GRID LAYOUT --- */}
+        <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
           
-          {/* Header */}
-          <div className="p-8 pb-6 text-center">
-            <motion.div 
-              animate={{ y: [0, -8, 0] }} 
-              transition={{ repeat: Infinity, duration: 3, ease: "easeInOut" }}
-              className="flex justify-center mb-3"
-            >
-              <div className="p-3 bg-blue-500/20 rounded-full border border-blue-500/30">
-                <Droplets className="text-blue-400" size={28} />
+          {/* MAIN MODULE: Liquid Level Visualizer (Spans 8 cols on desktop) */}
+          <motion.div 
+            layout
+            className="md:col-span-8 relative bg-white/5 backdrop-blur-2xl border border-white/10 rounded-[2rem] overflow-hidden min-h-[400px] flex flex-col justify-between p-8 shadow-2xl"
+          >
+            {/* Ambient Background Glow inside the card */}
+            <div className={`absolute -top-32 -right-32 w-96 h-96 rounded-full blur-[100px] opacity-20 ${theme.bg}`}></div>
+
+            <div className="relative z-10 flex justify-between items-start">
+              <div>
+                <p className="text-sm font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                  <Activity size={16} /> Live Telemetry
+                </p>
+                <div className="mt-4 flex items-baseline gap-2">
+                  <motion.h2 
+                    key={floodData.waterLevel}
+                    initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
+                    className="text-8xl md:text-9xl font-black text-white tracking-tighter"
+                  >
+                    {floodData.waterLevel}
+                  </motion.h2>
+                  <span className="text-3xl font-bold text-slate-500">cm</span>
+                </div>
               </div>
-            </motion.div>
-            <h1 className="text-3xl font-black text-white tracking-tight">Group 5</h1>
-            <p className="text-blue-400 text-xs font-bold uppercase tracking-[0.3em] mt-2">Flood Monitor System</p>
-          </div>
-
-          {/* Tab Switcher */}
-          <div className="flex p-1.5 bg-slate-900/50 mx-8 rounded-2xl mb-6 border border-slate-800">
-            {['dashboard', 'history'].map((tab) => (
-              <button 
-                key={tab}
-                onClick={() => setActiveTab(tab)} 
-                className="relative flex-1 py-3 rounded-xl transition-all text-xs font-black uppercase tracking-wider z-10"
+              
+              {/* Dynamic Status Badge */}
+              <motion.div 
+                animate={{ scale: floodData.statusLevel > 0 ? [1, 1.05, 1] : 1 }}
+                transition={{ repeat: Infinity, duration: 2 }}
+                className={`flex items-center gap-2 px-6 py-3 rounded-2xl border ${theme.border} bg-white/5 backdrop-blur-md shadow-xl`}
               >
-                {activeTab === tab && (
-                  <motion.div layoutId="activeTab" className="absolute inset-0 bg-blue-500/20 border border-blue-500/50 rounded-xl -z-10" />
-                )}
-                <span className={activeTab === tab ? 'text-blue-400' : 'text-slate-500 hover:text-slate-300'}>
-                  {tab}
+                <theme.icon className={`${theme.text} drop-shadow-md`} size={20} />
+                <span className={`text-sm font-black uppercase tracking-widest ${theme.text}`}>
+                  {theme.label}
                 </span>
-              </button>
-            ))}
-          </div>
+              </motion.div>
+            </div>
 
-          <div className="px-8 pb-10 min-h-[350px]">
-            <AnimatePresence mode="wait">
-              {activeTab === 'dashboard' ? (
-                <motion.div key="live" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }}>
-                  <div className={`rounded-[2rem] p-10 text-center border transition-all duration-700 ${s.color} ${s.border} ${s.textColor}`}>
-                    <motion.div 
-                      animate={s.pulse ? { scale: [1, 1.1, 1] } : {}} 
-                      transition={{ repeat: Infinity, duration: 1 }}
-                    >
-                      <s.icon size={64} className="mx-auto mb-6 drop-shadow-lg" />
-                    </motion.div>
-                    
-                    <h2 className="text-5xl font-black tracking-tighter drop-shadow-md">{s.text}</h2>
-                    
-                    <div className="mt-4 flex items-baseline justify-center gap-2">
-                      <span className="text-7xl font-black text-white">{floodData.waterLevel}</span>
-                      <span className="text-2xl font-bold opacity-70">cm</span>
-                    </div>
-
-                    <div className="mt-8 pt-6 border-t border-white/10 flex items-center justify-center gap-2 opacity-80">
-                      <Clock size={14} />
-                      <p className="text-[11px] font-black uppercase tracking-widest">{floodData.time}</p>
-                    </div>
-                  </div>
+            {/* Liquid Fill Visualizer */}
+            <div className="relative z-10 mt-12">
+              <div className="flex justify-between text-[10px] font-bold text-slate-500 uppercase mb-2 px-1">
+                <span>Sensor Floor (0cm)</span>
+                <span>Max Capacity (40cm)</span>
+              </div>
+              <div className="h-8 w-full bg-black/40 rounded-full overflow-hidden border border-white/5 relative p-1 shadow-inner">
+                <motion.div 
+                  className={`h-full rounded-full ${theme.bg} shadow-[0_0_20px_rgba(255,255,255,0.3)] relative overflow-hidden`}
+                  initial={{ width: 0 }}
+                  animate={{ width: `${fillPercentage}%` }}
+                  transition={{ type: "spring", stiffness: 50, damping: 15 }}
+                >
+                  {/* Highlight stripe on the liquid */}
+                  <div className="absolute top-0 left-0 w-full h-1/2 bg-white/20"></div>
                 </motion.div>
-              ) : (
-                <motion.div key="hist" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} className="space-y-3 h-[320px] overflow-y-auto pr-2 custom-scrollbar">
+              </div>
+            </div>
+          </motion.div>
+
+          {/* SIDE MODULE: Notification & History (Spans 4 cols on desktop) */}
+          <div className="md:col-span-4 flex flex-col gap-6">
+            
+            {/* Quick Alert Card */}
+            <div className={`bg-white/5 backdrop-blur-xl border border-white/10 rounded-[2rem] p-6 shadow-2xl relative overflow-hidden`}>
+              <div className={`absolute top-0 left-0 w-1 h-full ${theme.bg}`}></div>
+              <div className="flex items-center gap-3 mb-2">
+                <BellRing size={18} className={theme.text} />
+                <h3 className="text-sm font-bold text-white uppercase tracking-wider">System Action</h3>
+              </div>
+              <p className="text-slate-400 text-sm leading-relaxed font-medium">
+                {floodData.statusLevel === 3 ? "Critical danger. Evacuate immediately. Hardware alarms are active." : 
+                 floodData.statusLevel === 2 ? "High water detected. Prepare for possible evacuation." :
+                 floodData.statusLevel === 1 ? "Water levels rising. Monitor the situation closely." :
+                 "Sensors detect normal levels. No immediate action required."}
+              </p>
+            </div>
+
+            {/* Event Log (History) */}
+            <div className="flex-1 bg-white/5 backdrop-blur-xl border border-white/10 rounded-[2rem] p-6 shadow-2xl flex flex-col">
+              <div className="flex justify-between items-center mb-6">
+                <h3 className="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
+                  <Clock size={16} className="text-slate-400" /> Event Log
+                </h3>
+              </div>
+              
+              <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar space-y-3 max-h-[200px] md:max-h-[300px]">
+                <AnimatePresence>
                   {history.length > 0 ? history.map((item, i) => {
-                    const st = getStatus(item.statusLevel);
+                    const st = getTheme(item.statusLevel);
                     return (
                       <motion.div 
-                        initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 }}
+                        initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }}
                         key={i} 
-                        className="bg-slate-800/50 p-4 rounded-2xl flex justify-between items-center border border-slate-700 hover:bg-slate-700/50 transition-colors"
+                        className="group flex items-center justify-between p-3 rounded-xl bg-black/20 hover:bg-white/5 border border-white/5 transition-all duration-300"
                       >
-                        <div className="flex items-center gap-4">
-                          <div className={`w-2 h-10 rounded-full ${st.color.replace('/20', '')}`}></div>
+                        <div className="flex items-center gap-3">
+                          <div className={`w-2 h-2 rounded-full ${st.bg} ${st.glow}`}></div>
                           <div>
-                            <p className={`text-[10px] font-black uppercase tracking-wider ${st.textColor}`}>{st.text}</p>
-                            <p className="text-2xl font-black text-white">{item.waterLevel} <span className="text-sm text-slate-400 font-bold">cm</span></p>
+                            <p className="text-lg font-black text-white">{item.waterLevel}<span className="text-[10px] text-slate-500 ml-1">cm</span></p>
+                            <p className={`text-[9px] font-bold uppercase tracking-widest ${st.text}`}>{st.label}</p>
                           </div>
                         </div>
-                        <div className="text-right flex flex-col gap-1">
-                          <div className="flex items-center justify-end gap-1 text-slate-300">
-                            <Clock size={10} />
-                            <p className="text-[10px] font-bold uppercase">{item.time}</p>
-                          </div>
-                          <div className="flex items-center justify-end gap-1 text-slate-500">
-                            <CalendarDays size={10} />
-                            <p className="text-[9px] font-bold uppercase">{item.date}</p>
-                          </div>
+                        <div className="text-right">
+                          <p className="text-xs font-mono text-slate-300 group-hover:text-white transition-colors">{item.time}</p>
+                          <p className="text-[9px] font-bold uppercase text-slate-600">{item.date}</p>
                         </div>
                       </motion.div>
                     )
                   }) : (
-                    <div className="h-full flex flex-col items-center justify-center text-slate-500 opacity-50">
-                      <Droplets size={48} className="mb-4" />
-                      <p className="text-sm font-bold uppercase tracking-widest">No Data Yet</p>
+                    <div className="h-full flex flex-col items-center justify-center text-slate-600">
+                      <p className="text-xs font-bold uppercase tracking-widest">Awaiting Data</p>
                     </div>
                   )}
-                </motion.div>
-              )}
-            </AnimatePresence>
+                </AnimatePresence>
+              </div>
+            </div>
+
           </div>
         </div>
       </div>
