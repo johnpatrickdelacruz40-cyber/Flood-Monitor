@@ -77,8 +77,7 @@ export default function App() {
           <div className="flex items-center gap-5">
             <div className="relative group p-0.5 rounded-full bg-white/5 border border-white/10 shadow-inner overflow-hidden">
               <div className={`absolute -inset-1 rounded-full blur-md opacity-70 transition-all duration-1000 ${theme.bg}`}></div>
-              <img 
-                src="/logo.png" 
+              <img src="/logo.png"
                 alt="HydroSense OS" 
                 className="w-16 h-16 rounded-full relative z-10 border-2 border-slate-900 group-hover:scale-105 transition-transform duration-500"
               />
