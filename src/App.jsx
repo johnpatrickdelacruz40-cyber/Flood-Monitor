@@ -64,8 +64,9 @@ export default function App() {
   };
 
   const theme = getTheme(floodData.statusLevel);
-  // NEW MATH: 23cm Maximum Capacity
-  const fillPercentage = Math.min((floodData.waterLevel / 23) * 100, 100);
+  
+  // NEW MATH: 22cm Maximum Capacity
+  const fillPercentage = Math.min((floodData.waterLevel / 22) * 100, 100);
 
   return (
     <div className={`min-h-screen bg-[#0a0a0a] text-slate-200 font-sans selection:bg-white/20 transition-colors duration-1000 bg-gradient-to-br ${theme.gradient} flex items-center justify-center p-4 md:p-8`}>
@@ -78,7 +79,7 @@ export default function App() {
             <div className="relative group p-0.5 rounded-full bg-white/5 border border-white/10 shadow-inner overflow-hidden">
               <div className={`absolute -inset-1 rounded-full blur-md opacity-70 transition-all duration-1000 ${theme.bg}`}></div>
               <img 
-                src="C:\Users\johnp\OneDrive\Desktop\FINAL PROJECT\Embedded System\cozy-dispenser\src\assets\ICON ICON.png" 
+                src="/logo.png" 
                 alt="HydroSense OS" 
                 className="w-16 h-16 rounded-full relative z-10 border-2 border-slate-900 group-hover:scale-105 transition-transform duration-500"
               />
@@ -141,7 +142,7 @@ export default function App() {
             <div className="relative z-10 mt-12">
               <div className="flex justify-between text-[10px] font-bold text-slate-500 uppercase mb-2 px-1">
                 <span>Sensor Floor (0cm)</span>
-                <span>Max Capacity (23cm)</span>
+                <span>Max Capacity (22cm)</span> {/* UPDATED LABEL */}
               </div>
               <div className="h-8 w-full bg-black/40 rounded-full overflow-hidden border border-white/5 relative p-1 shadow-inner">
                 <motion.div 
