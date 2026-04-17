@@ -1,25 +1,33 @@
-import { kv } from "@vercel/kv";
+import { NextResponse } from 'next/server';
 
-export default async function handler(req, res) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+// Temporary memory to hold the ESP32 data for your presentation
+let floodHistory = [];
+let latestData = { waterLevel: 0, statusLevel: 0, date: "Waiting...", time: "Waiting..." };
 
-  if (req.method === 'OPTIONS') return res.status(200).end();
-
-  if (req.method === "POST") {
-    try {
-      const data = req.body;
-      await kv.set("latestFloodData", data);
-      await kv.lpush("floodHistory", data);
-      await kv.ltrim("floodHistory", 0, 19);
-      return res.status(200).json({ success: true });
-    } catch (e) { return res.status(500).json({ error: e.message }); }
-  } 
-
-  if (req.method === "GET") {
-    const latest = await kv.get("latestFloodData");
-    const history = await kv.lrange("floodHistory", 0, 19);
-    return res.status(200).json({ latest, history });
+// 1. ESP32 sends data here (POST)
+export async function POST(req) {
+  try {
+    const data = await req.json();
+    latestData = data;
+    
+    // Add new data to the top of the history list
+    floodHistory.unshift(data); 
+    
+    // Keep only the last 10 scans so the app doesn't crash
+    if (floodHistory.length > 10) {
+      floodHistory.pop(); 
+    }
+    
+    return NextResponse.json({ success: true });
+  } catch (e) {
+    return NextResponse.json({ error: "Failed to read ESP32 data" }, { status: 400 });
   }
+}
+
+// 2. React App asks for data here (GET)
+export async function GET() {
+  return NextResponse.json({
+    latest: latestData,
+    history: floodHistory
+  });
 }

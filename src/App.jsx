@@ -16,10 +16,13 @@ export default function App() {
         const data = await response.json();
         if (data.latest) setFloodData(data.latest);
         if (data.history) setHistory(data.history);
-      } catch (e) { console.error("Sync Error"); }
+      } catch (e) { 
+        console.error("Sync Error - Waiting for connection..."); 
+      }
     };
-    fetchData();
-    const interval = setInterval(fetchData, 2000);
+    
+    fetchData(); // Fetch immediately on load
+    const interval = setInterval(fetchData, 2000); // Check every 2 seconds
     return () => clearInterval(interval);
   }, []);
 
@@ -41,33 +44,37 @@ export default function App() {
         </div>
 
         <div className="flex p-2 bg-slate-50 mx-8 mt-6 rounded-2xl">
-          <button onClick={() => setActiveTab('dashboard')} className={`flex-1 py-2 rounded-xl transition-all ${activeTab === 'dashboard' ? 'bg-white shadow-sm' : 'opacity-40'}`}>Live</button>
-          <button onClick={() => setActiveTab('history')} className={`flex-1 py-2 rounded-xl transition-all ${activeTab === 'history' ? 'bg-white shadow-sm' : 'opacity-40'}`}>History</button>
+          <button onClick={() => setActiveTab('dashboard')} className={`flex-1 py-2 rounded-xl transition-all font-bold ${activeTab === 'dashboard' ? 'bg-white shadow-sm text-slate-800' : 'opacity-40 text-slate-600'}`}>Live</button>
+          <button onClick={() => setActiveTab('history')} className={`flex-1 py-2 rounded-xl transition-all font-bold ${activeTab === 'history' ? 'bg-white shadow-sm text-slate-800' : 'opacity-40 text-slate-600'}`}>History</button>
         </div>
 
         <div className="p-8">
           <AnimatePresence mode="wait">
             {activeTab === 'dashboard' ? (
-              <motion.div key="d" initial={{y:10, opacity:0}} animate={{y:0, opacity:1}} className={`p-8 rounded-3xl text-center ${s.color} ${s.textColor}`}>
+              <motion.div key="dashboard" initial={{y:10, opacity:0}} animate={{y:0, opacity:1}} exit={{y:-10, opacity:0}} className={`p-8 rounded-3xl text-center ${s.color} ${s.textColor}`}>
                 <s.icon size={48} className="mx-auto mb-4" />
                 <h2 className="text-4xl font-black">{s.text}</h2>
-                <p className="text-xl font-bold">{floodData.waterLevel} cm</p>
+                <p className="text-xl font-bold mt-2">{floodData.waterLevel} cm</p>
                 <p className="mt-4 text-xs opacity-60">Updated: {floodData.time}</p>
               </motion.div>
             ) : (
-              <div className="space-y-3 max-h-64 overflow-y-auto">
-                {history.map((item, i) => (
-                  <div key={i} className="bg-slate-50 p-4 rounded-2xl flex justify-between border border-slate-100 text-sm">
-                    <div>
-                      <p className="font-black uppercase text-[10px]">{getStatus(item.statusLevel).text}</p>
-                      <p className="text-lg font-bold">{item.waterLevel} cm</p>
+              <motion.div key="history" initial={{y:10, opacity:0}} animate={{y:0, opacity:1}} exit={{y:-10, opacity:0}} className="space-y-3 max-h-64 overflow-y-auto pr-2">
+                {history.length === 0 ? (
+                  <p className="text-center text-slate-400 text-sm py-4">No data recorded yet...</p>
+                ) : (
+                  history.map((item, i) => (
+                    <div key={i} className="bg-slate-50 p-4 rounded-2xl flex justify-between items-center border border-slate-100 text-sm">
+                      <div>
+                        <p className={`font-black uppercase text-[10px] ${getStatus(item.statusLevel).textColor}`}>{getStatus(item.statusLevel).text}</p>
+                        <p className="text-lg font-bold text-slate-700">{item.waterLevel} cm</p>
+                      </div>
+                      <div className="text-right text-[10px] text-slate-400 font-bold">
+                        <p>{item.date}</p><p>{item.time}</p>
+                      </div>
                     </div>
-                    <div className="text-right text-[10px] text-slate-400 font-bold">
-                      <p>{item.date}</p><p>{item.time}</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
+                  ))
+                )}
+              </motion.div>
             )}
           </AnimatePresence>
         </div>
