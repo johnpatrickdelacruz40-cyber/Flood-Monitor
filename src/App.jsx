@@ -64,7 +64,7 @@ export default function App() {
   };
 
   const theme = getTheme(floodData.statusLevel);
-  // Matches the estimated auto-calibrated max height
+  // Calculates exactly out of 16cm
   const fillPercentage = Math.min((floodData.waterLevel / 16) * 100, 100);
 
   return (
@@ -139,7 +139,7 @@ export default function App() {
             <div className="relative z-10 mt-12">
               <div className="flex justify-between text-[10px] font-bold text-slate-500 uppercase mb-2 px-1">
                 <span>Sensor Floor (0cm)</span>
-                <span>Max Capacity (~16cm)</span>
+                <span>Max Capacity (16cm)</span>
               </div>
               <div className="h-8 w-full bg-black/40 rounded-full overflow-hidden border border-white/5 relative p-1 shadow-inner">
                 <motion.div 
