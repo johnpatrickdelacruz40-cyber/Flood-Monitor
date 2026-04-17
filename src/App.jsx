@@ -9,22 +9,34 @@ export default function App() {
   });
   const [history, setHistory] = useState([]);
 
-  useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const response = await fetch('/api/flood', { cache: 'no-store' });
-        const data = await response.json();
-        if (data.latest) setFloodData(data.latest);
-        if (data.history) setHistory(data.history);
-      } catch (e) { 
-        console.error("Sync Error - Waiting for connection..."); 
+  // Inside App.jsx, find the useEffect block:
+
+useEffect(() => {
+  const fetchData = async () => {
+    try {
+      // FORCE the absolute URL of your Vercel API
+      const response = await fetch('https://flood-monitor-seven.vercel.app/api/flood', { 
+        cache: 'no-store',
+        mode: 'cors' // Ensure cross-origin is allowed
+      });
+      
+      const data = await response.json();
+      
+      if (data.latest) {
+        setFloodData(data.latest);
       }
-    };
-    
-    fetchData(); // Fetch immediately on load
-    const interval = setInterval(fetchData, 2000); // Check every 2 seconds
-    return () => clearInterval(interval);
-  }, []);
+      if (data.history) {
+        setHistory(data.history);
+      }
+    } catch (e) { 
+      console.error("Dashboard Sync Error:", e); 
+    }
+  };
+  
+  fetchData();
+  const interval = setInterval(fetchData, 2000);
+  return () => clearInterval(interval);
+}, []);
 
   const getStatus = (level) => {
     if (level === 3) return { text: "EVACUATE", color: "bg-[#F3E8FF]", textColor: "text-[#6B4C9A]", icon: AlertTriangle };
