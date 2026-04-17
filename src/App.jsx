@@ -83,7 +83,7 @@ export default function App() {
                 <Droplets className="text-blue-400" size={28} />
               </div>
             </motion.div>
-            <h1 className="text-3xl font-black text-white tracking-tight">Order Po!</h1>
+            <h1 className="text-3xl font-black text-white tracking-tight">Group 5</h1>
             <p className="text-blue-400 text-xs font-bold uppercase tracking-[0.3em] mt-2">Flood Monitor System</p>
           </div>
 
